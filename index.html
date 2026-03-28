@@ -57,16 +57,14 @@
       border: 1px solid #3a3a6a;
       border-radius: 4px;
       color: #e0d5c1;
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-family: 'Georgia', serif;
-      letter-spacing: 2px;
       outline: none;
       transition: border-color 0.2s;
     }
 
     #lobby input:focus { border-color: #d4af37; }
-
-    #lobby input::placeholder { color: #444466; letter-spacing: 1px; }
+    #lobby input::placeholder { color: #444466; }
 
     #join-btn {
       margin-top: 20px;
@@ -83,7 +81,6 @@
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
     }
-
     #join-btn:hover { background: #f0c040; }
     #join-btn:active { transform: scale(0.98); }
 
@@ -93,7 +90,6 @@
       font-size: 0.85rem;
       color: #e05555;
       text-align: center;
-      letter-spacing: 0.5px;
     }
 
     .lobby-hint {
@@ -101,11 +97,11 @@
       font-size: 0.78rem;
       color: #555577;
       text-align: center;
-      line-height: 1.6;
+      line-height: 1.7;
     }
 
     /* ===== WAITING ===== */
-    #waiting { text-align: center; }
+    #screen-waiting { text-align: center; }
 
     .spinner {
       width: 48px; height: 48px;
@@ -117,8 +113,8 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    #waiting p { color: #9090b0; font-size: 0.95rem; letter-spacing: 1px; line-height: 1.7; }
-    #waiting strong { color: #d4af37; }
+    #screen-waiting p { color: #9090b0; font-size: 0.95rem; letter-spacing: 1px; line-height: 1.8; }
+    #screen-waiting strong { color: #d4af37; }
 
     .leave-btn {
       margin-top: 28px;
@@ -136,7 +132,7 @@
     .leave-btn:hover { color: #e0d5c1; border-color: #9090b0; }
 
     /* ===== GAME ===== */
-    #game { width: 100%; align-items: center; }
+    #screen-game { width: 100%; align-items: center; }
 
     #game-header {
       display: flex;
@@ -181,7 +177,6 @@
       display: grid;
       grid-template-columns: repeat(15, 40px);
       grid-template-rows: repeat(15, 40px);
-      position: relative;
     }
 
     .cell {
@@ -203,9 +198,6 @@
     .cell.left::after    { left:50%; }
     .cell.right::after   { right:50%; left:auto; }
 
-    .cell.star-point::before {
-      /* Star point dot drawn as extra element via background */
-    }
     .star-dot {
       position: absolute;
       width: 6px; height: 6px;
@@ -263,7 +255,7 @@
       padding: 0 4px;
     }
 
-    #score { font-size: 0.88rem; color: #b0a080; letter-spacing: 1px; }
+    #score { font-size: 0.88rem; color: #b0a080; letter-spacing: 0.5px; }
     #score span { color: #d4af37; font-weight: bold; }
 
     #rematch-area { display: flex; align-items: center; gap: 12px; }
@@ -301,11 +293,9 @@
 
     #rematch-info { font-size: 0.8rem; color: #7070a0; letter-spacing: 0.5px; }
 
-    /* Board not-your-turn overlay */
     #board.not-my-turn .cell { cursor: not-allowed; }
     #board.not-my-turn .cell:hover .ghost { display: none; }
 
-    /* Disconnected banner */
     #disconnected-banner {
       display: none;
       background: #3a1a1a;
@@ -314,7 +304,6 @@
       padding: 10px 18px;
       border-radius: 4px;
       font-size: 0.88rem;
-      letter-spacing: 0.5px;
       margin-top: 12px;
       text-align: center;
     }
@@ -328,13 +317,13 @@
 <!-- ===== LOBBY ===== -->
 <div id="screen-lobby" class="screen active">
   <div id="lobby">
-    <label for="pwd-input">Game Password</label>
-    <input id="pwd-input" type="password" placeholder="enter a shared password" autocomplete="off" maxlength="64">
-    <button id="join-btn">JOIN / CREATE GAME</button>
+    <label for="name-input">Your Name</label>
+    <input id="name-input" type="text" placeholder="enter your name" autocomplete="off" maxlength="24">
+    <button id="join-btn">FIND GAME</button>
     <div id="lobby-error"></div>
     <p class="lobby-hint">
-      Both players enter the <strong>same password</strong> to join the same game.<br>
-      First to join creates the room and plays <strong>Black</strong>.
+      Open this same URL on another device or browser tab.<br>
+      The first two players to join are matched together.
     </p>
   </div>
 </div>
@@ -342,9 +331,8 @@
 <!-- ===== WAITING ===== -->
 <div id="screen-waiting" class="screen">
   <div class="spinner"></div>
-  <p>Room created. You play <strong id="waiting-color">Black</strong>.<br><br>
-     Share your password with your opponent<br>and wait for them to connect.</p>
-  <button class="leave-btn" id="leave-btn">Leave Room</button>
+  <p>Hello, <strong id="waiting-name"></strong>!<br><br>Waiting for an opponent to join…</p>
+  <button class="leave-btn" id="leave-btn">Cancel</button>
 </div>
 
 <!-- ===== GAME ===== -->
@@ -361,11 +349,13 @@
     <div id="board"></div>
   </div>
 
-  <div id="disconnected-banner" id="disc-banner">Opponent disconnected. Waiting for them to reconnect…</div>
+  <div id="disconnected-banner">Opponent disconnected.</div>
 
   <div id="game-footer">
     <div id="score">
-      Black: <span id="black-wins">0</span> &nbsp;|&nbsp; White: <span id="white-wins">0</span>
+      <span id="score-black-name">Black</span>: <span id="black-wins">0</span>
+      &nbsp;|&nbsp;
+      <span id="score-white-name">White</span>: <span id="white-wins">0</span>
     </div>
     <div id="rematch-area">
       <span id="rematch-info"></span>
@@ -376,13 +366,15 @@
 </div>
 
 <script>
-  // ---- State ----
-  let ws = null;
-  let myColor = null;
-  let gameOver = false;
-  let scores = { black: 0, white: 0 };
   const BOARD_SIZE = 15;
   const STAR_POINTS = new Set(['3,3','3,11','7,7','11,3','11,11']);
+
+  let ws = null;
+  let myColor = null;
+  let myName = null;
+  let opponentName = null;
+  let gameOver = false;
+  let scores = { black: 0, white: 0 };
 
   // ---- Audio ----
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -422,20 +414,18 @@
     }
   }
 
-  // ---- Screen management ----
+  // ---- Screens ----
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + id).classList.add('active');
   }
 
-  // ---- WebSocket connection ----
-  function connect(password) {
+  // ---- Connection ----
+  function connect(name) {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}`);
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', password }));
-    };
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'join', name }));
 
     ws.onmessage = (e) => {
       let msg;
@@ -444,7 +434,7 @@
     };
 
     ws.onclose = () => {
-      if (!gameOver) showDisconnectedBanner('Connection lost. Please refresh to reconnect.');
+      if (!gameOver) showBanner('Connection lost. Please refresh.');
     };
 
     ws.onerror = () => {
@@ -457,13 +447,13 @@
     audioCtx.resume();
     switch (msg.type) {
       case 'waiting':
-        myColor = 'black';
-        document.getElementById('waiting-color').textContent = 'Black';
+        document.getElementById('waiting-name').textContent = myName;
         showScreen('waiting');
         break;
 
       case 'start':
         myColor = msg.color;
+        opponentName = msg.opponentName;
         hideBanner();
         startGame();
         break;
@@ -482,7 +472,7 @@
         break;
 
       case 'opponent_disconnected':
-        showDisconnectedBanner('Opponent disconnected. Waiting for them to reconnect…');
+        showBanner('Opponent disconnected.');
         break;
 
       case 'error':
@@ -493,18 +483,19 @@
   }
 
   // ---- Lobby ----
-  const pwdInput = document.getElementById('pwd-input');
+  const nameInput = document.getElementById('name-input');
   const joinBtn = document.getElementById('join-btn');
 
   joinBtn.addEventListener('click', attemptJoin);
-  pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') attemptJoin(); });
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') attemptJoin(); });
 
   function attemptJoin() {
-    const pw = pwdInput.value.trim();
-    if (!pw) { setLobbyError('Please enter a password.'); return; }
+    const name = nameInput.value.trim();
+    if (!name) { setLobbyError('Please enter your name.'); return; }
     setLobbyError('');
+    myName = name;
     if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); }
-    connect(pw);
+    connect(name);
   }
 
   function setLobbyError(msg) {
@@ -517,24 +508,37 @@
     showScreen('lobby');
   });
 
-  // ---- Game board ----
+  // ---- Game ----
   const boardEl = document.getElementById('board');
   const turnDot = document.getElementById('turn-dot');
   const turnText = document.getElementById('turn-text');
 
+  function nameOf(color) {
+    if (color === myColor) return myName;
+    return opponentName;
+  }
+
   function startGame() {
     gameOver = false;
     document.getElementById('rematch-btn').style.display = 'none';
+    document.getElementById('rematch-btn').disabled = false;
     document.getElementById('rematch-info').textContent = '';
+
+    const blackName = myColor === 'black' ? myName : opponentName;
+    const whiteName = myColor === 'white' ? myName : opponentName;
     document.getElementById('my-color-label').textContent = capitalize(myColor);
+    document.getElementById('score-black-name').textContent = blackName;
+    document.getElementById('score-white-name').textContent = whiteName;
+
     buildBoard();
-    setTurn('black'); // black always goes first
+    setTurn('black');
     showScreen('game');
   }
 
   function buildBoard() {
     boardEl.innerHTML = '';
     boardEl.classList.remove('not-my-turn');
+
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
         const cell = document.createElement('div');
@@ -561,12 +565,14 @@
         boardEl.appendChild(cell);
       }
     }
-    updateBoardInteractivity('black'); // black goes first
+
+    updateBoardInteractivity('black');
   }
 
   function resetBoard() {
     gameOver = false;
     document.getElementById('rematch-btn').style.display = 'none';
+    document.getElementById('rematch-btn').disabled = false;
     document.getElementById('rematch-info').textContent = '';
     buildBoard();
     setTurn('black');
@@ -574,11 +580,9 @@
 
   function onCellClick(e) {
     if (gameOver) return;
-    const r = +e.currentTarget.dataset.r;
-    const c = +e.currentTarget.dataset.c;
-    if (e.currentTarget.querySelector('.piece')) return; // occupied
+    if (e.currentTarget.querySelector('.piece')) return;
     if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'move', row: r, col: c }));
+      ws.send(JSON.stringify({ type: 'move', row: +e.currentTarget.dataset.r, col: +e.currentTarget.dataset.c }));
     }
   }
 
@@ -601,15 +605,15 @@
     }
   }
 
-  function setTurn(player) {
-    const isBlack = player === 'black';
+  function setTurn(color) {
+    const isBlack = color === 'black';
     turnDot.style.background = isBlack ? '#222' : '#f5f5f5';
     turnDot.style.border = isBlack ? '2px solid #555' : '2px solid #999';
-    turnText.textContent = `${capitalize(player)}'s turn`;
+    turnText.textContent = `${nameOf(color)}'s turn`;
   }
 
-  function updateBoardInteractivity(currentPlayer) {
-    if (currentPlayer === myColor) {
+  function updateBoardInteractivity(currentColor) {
+    if (currentColor === myColor) {
       boardEl.classList.remove('not-my-turn');
     } else {
       boardEl.classList.add('not-my-turn');
@@ -623,15 +627,14 @@
     document.getElementById('white-wins').textContent = scores.white;
 
     winLine.forEach(([r, c]) => {
-      const cell = boardEl.children[r * BOARD_SIZE + c];
-      const piece = cell.querySelector('.piece');
+      const piece = boardEl.children[r * BOARD_SIZE + c].querySelector('.piece');
       if (piece) piece.classList.add('winner');
     });
 
     const isBlack = winner === 'black';
     turnDot.style.background = isBlack ? '#222' : '#f5f5f5';
     turnDot.style.border = isBlack ? '2px solid #555' : '2px solid #999';
-    turnText.textContent = `${capitalize(winner)} wins!`;
+    turnText.textContent = `${nameOf(winner)} wins!`;
     boardEl.classList.add('not-my-turn');
 
     playWinSound();
@@ -651,13 +654,13 @@
     scores = { black: 0, white: 0 };
     document.getElementById('black-wins').textContent = '0';
     document.getElementById('white-wins').textContent = '0';
-    pwdInput.value = '';
+    nameInput.value = '';
     setLobbyError('');
     showScreen('lobby');
   });
 
-  // ---- Disconnected banner ----
-  function showDisconnectedBanner(msg) {
+  // ---- Banner ----
+  function showBanner(msg) {
     const b = document.getElementById('disconnected-banner');
     b.textContent = msg;
     b.classList.add('visible');

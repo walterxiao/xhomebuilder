@@ -1,0 +1,12 @@
+{
+  "name": "connect-5",
+  "version": "1.0.0",
+  "description": "Multiplayer Connect-5 over WebSocket",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

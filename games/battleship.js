@@ -1,0 +1,314 @@
+const { WebSocketServer } = require('ws');
+
+const GRID_SIZE = 10;
+const FLEET = [
+  { id: 'carrier',    size: 5 },
+  { id: 'battleship', size: 4 },
+  { id: 'cruiser',    size: 3 },
+  { id: 'submarine',  size: 3 },
+  { id: 'destroyer',  size: 2 },
+];
+
+let queue = null;
+let nextSessionId = 1;
+const sessions = new Map();
+
+const wss = new WebSocketServer({ noServer: true });
+
+wss.on('connection', (ws) => {
+  ws.sessionId = null;
+  ws.playerIndex = null;
+  ws.playerName = null;
+
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (msg.type === 'bs_join')    handleJoin(ws, msg.name);
+    if (msg.type === 'bs_place')   handlePlace(ws, msg.ships);
+    if (msg.type === 'bs_fire')    handleFire(ws, msg.row, msg.col);
+    if (msg.type === 'bs_rematch') handleRematch(ws);
+    if (msg.type === 'bs_chat')    handleChat(ws, msg.text);
+  });
+
+  ws.on('close', () => handleDisconnect(ws));
+  ws.on('error', () => handleDisconnect(ws));
+});
+
+function send(ws, obj) {
+  if (ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function sendBoth(session, obj) {
+  session.players.forEach(p => send(p.ws, obj));
+}
+
+// ── Join / Matchmaking ────────────────────────────────────────────────────────
+
+function handleJoin(ws, name) {
+  if (ws.sessionId !== null) return; // already in a game
+  if (!name || typeof name !== 'string') return send(ws, { type: 'bs_error', message: 'Invalid name.' });
+  const cleanName = name.trim().slice(0, 24);
+  if (!cleanName) return send(ws, { type: 'bs_error', message: 'Please enter a name.' });
+
+  ws.playerName = cleanName;
+
+  if (queue && queue.ws.readyState === 1) {
+    const first = queue;
+    queue = null;
+
+    const sessionId = nextSessionId++;
+    const session = createSession(first.ws, first.name, ws, cleanName);
+    sessions.set(sessionId, session);
+
+    first.ws.sessionId = sessionId;
+    first.ws.playerIndex = 0;
+    ws.sessionId = sessionId;
+    ws.playerIndex = 1;
+
+    send(first.ws, { type: 'bs_start', myIndex: 0, opponentName: cleanName });
+    send(ws,       { type: 'bs_start', myIndex: 1, opponentName: first.name });
+  } else {
+    queue = { ws, name: cleanName };
+    send(ws, { type: 'bs_waiting' });
+  }
+}
+
+function createSession(ws0, name0, ws1, name1) {
+  return {
+    players: [
+      { ws: ws0, name: name0, ships: null, grid: makeGrid(), fired: new Set() },
+      { ws: ws1, name: name1, ships: null, grid: makeGrid(), fired: new Set() },
+    ],
+    phase: 'placement',
+    currentTurn: 0,
+    rematchVotes: new Set(),
+  };
+}
+
+function makeGrid() {
+  return Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
+}
+
+// ── Placement ─────────────────────────────────────────────────────────────────
+
+function handlePlace(ws, ships) {
+  if (ws.sessionId === null) return;
+  const session = sessions.get(ws.sessionId);
+  if (!session || session.phase !== 'placement') return;
+
+  const idx = ws.playerIndex;
+  const player = session.players[idx];
+
+  if (player.ships !== null) return send(ws, { type: 'bs_error', message: 'Already placed.' });
+
+  if (!Array.isArray(ships) || ships.length !== FLEET.length) {
+    return send(ws, { type: 'bs_error', message: 'Must place all 5 ships.' });
+  }
+
+  // Validate and build grid
+  const grid = makeGrid();
+  const providedIds = ships.map(s => s.id);
+  const requiredIds = FLEET.map(f => f.id);
+  for (const id of requiredIds) {
+    if (!providedIds.includes(id)) {
+      return send(ws, { type: 'bs_error', message: `Missing ship: ${id}` });
+    }
+  }
+
+  for (const shipDef of ships) {
+    const fleet = FLEET.find(f => f.id === shipDef.id);
+    if (!fleet) return send(ws, { type: 'bs_error', message: `Unknown ship: ${shipDef.id}` });
+
+    const { id, row, col, dir } = shipDef;
+    if (typeof row !== 'number' || typeof col !== 'number') {
+      return send(ws, { type: 'bs_error', message: 'Invalid ship coordinates.' });
+    }
+    if (dir !== 'h' && dir !== 'v') {
+      return send(ws, { type: 'bs_error', message: 'Direction must be h or v.' });
+    }
+
+    const cells = getShipCells(row, col, dir, fleet.size);
+    if (!cells) return send(ws, { type: 'bs_error', message: `Ship ${id} is out of bounds.` });
+
+    for (const [r, c] of cells) {
+      if (grid[r][c] !== null) {
+        return send(ws, { type: 'bs_error', message: `Ship ${id} overlaps another ship.` });
+      }
+      grid[r][c] = id;
+    }
+  }
+
+  player.ships = ships;
+  player.grid = grid;
+
+  const opponentIdx = 1 - idx;
+  sendBoth(session, { type: 'bs_placed', playerIndex: idx });
+
+  if (session.players[opponentIdx].ships !== null) {
+    // Both placed — start battle
+    session.phase = 'battle';
+    sendBoth(session, { type: 'bs_battle_start' });
+  }
+}
+
+function getShipCells(row, col, dir, size) {
+  const cells = [];
+  for (let i = 0; i < size; i++) {
+    const r = dir === 'v' ? row + i : row;
+    const c = dir === 'h' ? col + i : col;
+    if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return null;
+    cells.push([r, c]);
+  }
+  return cells;
+}
+
+// ── Battle ────────────────────────────────────────────────────────────────────
+
+function handleFire(ws, row, col) {
+  if (ws.sessionId === null) return;
+  const session = sessions.get(ws.sessionId);
+  if (!session || session.phase !== 'battle') return send(ws, { type: 'bs_error', message: 'Not in battle phase.' });
+
+  const idx = ws.playerIndex;
+  if (session.currentTurn !== idx) return send(ws, { type: 'bs_error', message: 'Not your turn.' });
+
+  if (typeof row !== 'number' || typeof col !== 'number' ||
+      row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
+    return send(ws, { type: 'bs_error', message: 'Invalid coordinates.' });
+  }
+
+  const key = `${row},${col}`;
+  const firedSet = session.players[idx].fired;
+  if (firedSet.has(key)) return send(ws, { type: 'bs_error', message: 'Already fired there.' });
+  firedSet.add(key);
+
+  const opponentIdx = 1 - idx;
+  const opponentPlayer = session.players[opponentIdx];
+  const targetCell = opponentPlayer.grid[row][col];
+  const hit = targetCell !== null;
+
+  let sunk = null;
+  let shipCells = null;
+
+  if (hit) {
+    opponentPlayer.grid[row][col] = `${targetCell}:hit`;
+
+    // Check if the ship is fully sunk
+    const fleet = FLEET.find(f => f.id === targetCell);
+    if (fleet) {
+      const cells = getShipCellsFromGrid(opponentPlayer.grid, targetCell);
+      const allHit = cells.every(([r, c]) => opponentPlayer.grid[r][c] === `${targetCell}:hit`);
+      if (allHit) {
+        sunk = targetCell;
+        shipCells = cells;
+      }
+    }
+  }
+
+  // Check win: all ships sunk
+  let winner = null;
+  if (sunk) {
+    const allSunk = FLEET.every(f => {
+      const cells = getShipCellsFromGrid(opponentPlayer.grid, f.id);
+      return cells.every(([r, c]) => opponentPlayer.grid[r][c] === `${f.id}:hit`);
+    });
+    if (allSunk) winner = idx;
+  }
+
+  if (winner !== null) {
+    session.phase = 'over';
+  } else {
+    if (!hit) session.currentTurn = opponentIdx; // miss = switch turns; hit = keep turn
+  }
+
+  sendBoth(session, {
+    type: 'bs_result',
+    row,
+    col,
+    hit,
+    sunk,
+    shipId: targetCell,
+    shipCells,
+    currentTurn: session.currentTurn,
+  });
+
+  if (winner !== null) {
+    session.rematchVotes.clear();
+    sendBoth(session, { type: 'bs_win', winner });
+  }
+}
+
+function getShipCellsFromGrid(grid, shipId) {
+  const cells = [];
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const cell = grid[r][c];
+      if (cell === shipId || cell === `${shipId}:hit`) {
+        cells.push([r, c]);
+      }
+    }
+  }
+  return cells;
+}
+
+// ── Rematch ───────────────────────────────────────────────────────────────────
+
+function handleRematch(ws) {
+  if (ws.sessionId === null) return;
+  const session = sessions.get(ws.sessionId);
+  if (!session || session.phase !== 'over') return;
+
+  session.rematchVotes.add(ws.playerIndex);
+  sendBoth(session, { type: 'bs_rematch_vote', votes: session.rematchVotes.size });
+
+  if (session.rematchVotes.size >= 2) {
+    resetSession(session);
+    sendBoth(session, { type: 'bs_rematch_start' });
+  }
+}
+
+function resetSession(session) {
+  session.players.forEach(p => {
+    p.ships = null;
+    p.grid = makeGrid();
+    p.fired = new Set();
+  });
+  session.phase = 'placement';
+  session.currentTurn = 0;
+  session.rematchVotes.clear();
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+function handleChat(ws, text) {
+  if (!ws.playerName || ws.sessionId === null) return;
+  if (typeof text !== 'string') return;
+  const clean = text.trim().slice(0, 200);
+  if (!clean) return;
+  const session = sessions.get(ws.sessionId);
+  if (!session) return;
+  sendBoth(session, { type: 'bs_chat', name: ws.playerName, text: clean });
+}
+
+// ── Disconnect ────────────────────────────────────────────────────────────────
+
+function handleDisconnect(ws) {
+  if (queue && queue.ws === ws) {
+    queue = null;
+    return;
+  }
+  if (ws.sessionId === null) return;
+  const session = sessions.get(ws.sessionId);
+  if (!session) return;
+
+  session.players.forEach(p => {
+    if (p.ws !== ws && p.ws.readyState === 1) {
+      send(p.ws, { type: 'bs_opponent_disconnected' });
+    }
+  });
+
+  sessions.delete(ws.sessionId);
+  ws.sessionId = null;
+}
+
+module.exports = { wss };

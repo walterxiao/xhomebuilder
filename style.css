@@ -1,0 +1,209 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, sans-serif;
+  background: #eff1f6;
+  color: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  padding: 24px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.brand h1 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+}
+
+.brand p {
+  margin: 0;
+  color: #4b5563;
+}
+
+.panel {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.palette {
+  display: grid;
+  gap: 10px;
+}
+
+.palette-item {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: grab;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.palette-item:hover,
+.palette-item:focus-visible {
+  background: #f3f4f6;
+  transform: translateY(-1px);
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+
+.toolbar {
+  padding: 16px 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #6b7280;
+  margin-bottom: 20px;
+}
+
+.floorplan {
+  position: relative;
+  flex: 1;
+  min-height: 640px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 18px;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.06), transparent 25%),
+    linear-gradient(#dbeafe 1px, transparent 1px),
+    linear-gradient(90deg, #dbeafe 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 40px 40px;
+  background-position: 0 0, 0 0, 0 0;
+  overflow: hidden;
+}
+
+.floorplan-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #9ca3af;
+  font-size: 1.1rem;
+  pointer-events: none;
+}
+
+.furniture {
+  position: absolute;
+  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  cursor: grab;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.furniture.drag-preview {
+  position: fixed;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.05);
+  z-index: 9999;
+  opacity: 0.95;
+}
+
+.furniture:hover {
+  transform: translateY(-1px);
+}
+
+.furniture .remove-button {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: white;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.furniture.sofa {
+  width: 140px;
+  height: 60px;
+  background: #3b82f6;
+}
+
+.furniture.table {
+  width: 90px;
+  height: 90px;
+  background: #f59e0b;
+}
+
+.furniture.chair {
+  width: 50px;
+  height: 50px;
+  background: #10b981;
+}
+
+.furniture.bed {
+  width: 140px;
+  height: 80px;
+  background: #8b5cf6;
+}
+
+.furniture.shelf {
+  width: 100px;
+  height: 50px;
+  background: #ec4899;
+}
+
+.furniture.dragging {
+  opacity: 0.85;
+  cursor: grabbing;
+}
+
+@media (max-width: 1000px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    order: 2;
+  }
+
+  .workspace {
+    order: 1;
+  }
+}

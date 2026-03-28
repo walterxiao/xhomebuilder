@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect-5</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Georgia', serif;
+      color: #e0d5c1;
+    }
+
+    h1 {
+      font-size: 2rem;
+      letter-spacing: 4px;
+      margin-bottom: 24px;
+      color: #d4af37;
+      text-shadow: 0 0 20px rgba(212,175,55,0.4);
+    }
+
+    /* ===== SCREENS ===== */
+    .screen { display: none; flex-direction: column; align-items: center; }
+    .screen.active { display: flex; }
+
+    /* ===== LOBBY ===== */
+    #lobby {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 36px 48px;
+      max-width: 380px;
+      width: 90vw;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+
+    #lobby label {
+      display: block;
+      font-size: 0.85rem;
+      letter-spacing: 2px;
+      color: #9090b0;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    #lobby input {
+      width: 100%;
+      padding: 12px 14px;
+      background: #0f0f24;
+      border: 1px solid #3a3a6a;
+      border-radius: 4px;
+      color: #e0d5c1;
+      font-size: 1rem;
+      font-family: 'Georgia', serif;
+      letter-spacing: 2px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #lobby input:focus { border-color: #d4af37; }
+
+    #lobby input::placeholder { color: #444466; letter-spacing: 1px; }
+
+    #join-btn {
+      margin-top: 20px;
+      width: 100%;
+      padding: 13px;
+      background: #d4af37;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-family: 'Georgia', serif;
+      font-weight: bold;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #join-btn:hover { background: #f0c040; }
+    #join-btn:active { transform: scale(0.98); }
+
+    #lobby-error {
+      margin-top: 14px;
+      min-height: 20px;
+      font-size: 0.85rem;
+      color: #e05555;
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
+
+    .lobby-hint {
+      margin-top: 18px;
+      font-size: 0.78rem;
+      color: #555577;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ===== WAITING ===== */
+    #waiting { text-align: center; }
+
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid #2a2a5a;
+      border-top-color: #d4af37;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto 24px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #waiting p { color: #9090b0; font-size: 0.95rem; letter-spacing: 1px; line-height: 1.7; }
+    #waiting strong { color: #d4af37; }
+
+    .leave-btn {
+      margin-top: 28px;
+      background: transparent;
+      color: #9090b0;
+      border: 1px solid #3a3a6a;
+      padding: 9px 22px;
+      font-family: 'Georgia', serif;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .leave-btn:hover { color: #e0d5c1; border-color: #9090b0; }
+
+    /* ===== GAME ===== */
+    #game { width: 100%; align-items: center; }
+
+    #game-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 668px;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    #status {
+      font-size: 1rem;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .indicator {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    #my-color-tag {
+      font-size: 0.8rem;
+      color: #555577;
+      letter-spacing: 1px;
+    }
+
+    #board-container {
+      background: #c8a96e;
+      padding: 24px;
+      border-radius: 4px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.15);
+      border: 3px solid #8b6914;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(15, 40px);
+      grid-template-rows: repeat(15, 40px);
+      position: relative;
+    }
+
+    .cell {
+      width: 40px; height: 40px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .cell::before, .cell::after {
+      content: '';
+      position: absolute;
+      background: #6b4a0a;
+    }
+    .cell::before { left:0; right:0; top:50%; height:1px; transform:translateY(-50%); }
+    .cell::after  { top:0; bottom:0; left:50%; width:1px; transform:translateX(-50%); }
+
+    .cell.top::before    { top:50%; }
+    .cell.bottom::before { bottom:50%; top:auto; }
+    .cell.left::after    { left:50%; }
+    .cell.right::after   { right:50%; left:auto; }
+
+    .cell.star-point::before {
+      /* Star point dot drawn as extra element via background */
+    }
+    .star-dot {
+      position: absolute;
+      width: 6px; height: 6px;
+      background: #6b4a0a;
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .cell:hover .ghost { display: block; }
+    .ghost {
+      display: none;
+      position: absolute;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.4;
+    }
+    .ghost.black-ghost { background: radial-gradient(circle at 35% 30%, #888, #111); }
+    .ghost.white-ghost { background: radial-gradient(circle at 35% 30%, #fff, #bbb); }
+
+    .piece {
+      position: absolute;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+      animation: place 0.15s ease-out;
+    }
+    @keyframes place {
+      from { transform: translate(-50%,-50%) scale(0.5); opacity: 0.6; }
+      to   { transform: translate(-50%,-50%) scale(1);   opacity: 1; }
+    }
+    .piece.black { background: radial-gradient(circle at 35% 30%, #888, #111 70%); box-shadow: 2px 3px 8px rgba(0,0,0,0.6); }
+    .piece.white { background: radial-gradient(circle at 35% 30%, #fff, #ccc 70%); box-shadow: 2px 3px 8px rgba(0,0,0,0.4); border: 1px solid #aaa; }
+    .piece.winner { animation: pulse 0.6s ease-in-out infinite alternate; }
+    @keyframes pulse {
+      from { box-shadow: 0 0 10px 4px #d4af37; }
+      to   { box-shadow: 0 0 22px 10px #f0c040; }
+    }
+
+    #game-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 668px;
+      margin-top: 14px;
+      padding: 0 4px;
+    }
+
+    #score { font-size: 0.88rem; color: #b0a080; letter-spacing: 1px; }
+    #score span { color: #d4af37; font-weight: bold; }
+
+    #rematch-area { display: flex; align-items: center; gap: 12px; }
+
+    button.action-btn {
+      background: #d4af37;
+      color: #1a1a2e;
+      border: none;
+      padding: 9px 20px;
+      font-size: 0.88rem;
+      font-family: 'Georgia', serif;
+      letter-spacing: 1px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button.action-btn:hover { background: #f0c040; }
+    button.action-btn:active { transform: scale(0.97); }
+    button.action-btn:disabled { background: #5a4a10; color: #8a7a40; cursor: default; }
+
+    button.ghost-btn {
+      background: transparent;
+      color: #9090b0;
+      border: 1px solid #3a3a6a;
+      padding: 9px 18px;
+      font-family: 'Georgia', serif;
+      font-size: 0.85rem;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    button.ghost-btn:hover { color: #e0d5c1; border-color: #9090b0; }
+
+    #rematch-info { font-size: 0.8rem; color: #7070a0; letter-spacing: 0.5px; }
+
+    /* Board not-your-turn overlay */
+    #board.not-my-turn .cell { cursor: not-allowed; }
+    #board.not-my-turn .cell:hover .ghost { display: none; }
+
+    /* Disconnected banner */
+    #disconnected-banner {
+      display: none;
+      background: #3a1a1a;
+      border: 1px solid #7a2a2a;
+      color: #e08080;
+      padding: 10px 18px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+      letter-spacing: 0.5px;
+      margin-top: 12px;
+      text-align: center;
+    }
+    #disconnected-banner.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<h1>CONNECT&#8209;5</h1>
+
+<!-- ===== LOBBY ===== -->
+<div id="screen-lobby" class="screen active">
+  <div id="lobby">
+    <label for="pwd-input">Game Password</label>
+    <input id="pwd-input" type="password" placeholder="enter a shared password" autocomplete="off" maxlength="64">
+    <button id="join-btn">JOIN / CREATE GAME</button>
+    <div id="lobby-error"></div>
+    <p class="lobby-hint">
+      Both players enter the <strong>same password</strong> to join the same game.<br>
+      First to join creates the room and plays <strong>Black</strong>.
+    </p>
+  </div>
+</div>
+
+<!-- ===== WAITING ===== -->
+<div id="screen-waiting" class="screen">
+  <div class="spinner"></div>
+  <p>Room created. You play <strong id="waiting-color">Black</strong>.<br><br>
+     Share your password with your opponent<br>and wait for them to connect.</p>
+  <button class="leave-btn" id="leave-btn">Leave Room</button>
+</div>
+
+<!-- ===== GAME ===== -->
+<div id="screen-game" class="screen">
+  <div id="game-header">
+    <div id="status">
+      <span class="indicator" id="turn-dot"></span>
+      <span id="turn-text">—</span>
+    </div>
+    <div id="my-color-tag">You play <span id="my-color-label">—</span></div>
+  </div>
+
+  <div id="board-container">
+    <div id="board"></div>
+  </div>
+
+  <div id="disconnected-banner" id="disc-banner">Opponent disconnected. Waiting for them to reconnect…</div>
+
+  <div id="game-footer">
+    <div id="score">
+      Black: <span id="black-wins">0</span> &nbsp;|&nbsp; White: <span id="white-wins">0</span>
+    </div>
+    <div id="rematch-area">
+      <span id="rematch-info"></span>
+      <button class="action-btn" id="rematch-btn" style="display:none">Rematch</button>
+      <button class="ghost-btn" id="quit-btn">Quit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- State ----
+  let ws = null;
+  let myColor = null;
+  let gameOver = false;
+  let scores = { black: 0, white: 0 };
+  const BOARD_SIZE = 15;
+  const STAR_POINTS = new Set(['3,3','3,11','7,7','11,3','11,11']);
+
+  // ---- Audio ----
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function playPlaceSound() {
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+  }
+
+  function playWinSound() {
+    [523, 659, 784, 1047].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type = 'triangle';
+      const t = audioCtx.currentTime + i * 0.18;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.25, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t); osc.stop(t + 0.45);
+    });
+    for (let i = 0; i < 6; i++) {
+      const osc2 = audioCtx.createOscillator(), gain2 = audioCtx.createGain();
+      osc2.connect(gain2); gain2.connect(audioCtx.destination);
+      osc2.type = 'sine';
+      const t2 = audioCtx.currentTime + 0.72 + i * 0.07;
+      osc2.frequency.setValueAtTime(1200 + i * 150, t2);
+      gain2.gain.setValueAtTime(0.12, t2);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.15);
+      osc2.start(t2); osc2.stop(t2 + 0.18);
+    }
+  }
+
+  // ---- Screen management ----
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + id).classList.add('active');
+  }
+
+  // ---- WebSocket connection ----
+  function connect(password) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}`);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join', password }));
+    };
+
+    ws.onmessage = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      handleServerMessage(msg);
+    };
+
+    ws.onclose = () => {
+      if (!gameOver) showDisconnectedBanner('Connection lost. Please refresh to reconnect.');
+    };
+
+    ws.onerror = () => {
+      setLobbyError('Could not connect to server.');
+      showScreen('lobby');
+    };
+  }
+
+  function handleServerMessage(msg) {
+    audioCtx.resume();
+    switch (msg.type) {
+      case 'waiting':
+        myColor = 'black';
+        document.getElementById('waiting-color').textContent = 'Black';
+        showScreen('waiting');
+        break;
+
+      case 'start':
+        myColor = msg.color;
+        hideBanner();
+        startGame();
+        break;
+
+      case 'move':
+        applyMove(msg.row, msg.col, msg.color, msg.winLine);
+        break;
+
+      case 'rematch_vote':
+        document.getElementById('rematch-info').textContent =
+          msg.votes === 1 ? 'Waiting for opponent…' : '';
+        break;
+
+      case 'rematch_start':
+        resetBoard();
+        break;
+
+      case 'opponent_disconnected':
+        showDisconnectedBanner('Opponent disconnected. Waiting for them to reconnect…');
+        break;
+
+      case 'error':
+        setLobbyError(msg.message);
+        showScreen('lobby');
+        break;
+    }
+  }
+
+  // ---- Lobby ----
+  const pwdInput = document.getElementById('pwd-input');
+  const joinBtn = document.getElementById('join-btn');
+
+  joinBtn.addEventListener('click', attemptJoin);
+  pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') attemptJoin(); });
+
+  function attemptJoin() {
+    const pw = pwdInput.value.trim();
+    if (!pw) { setLobbyError('Please enter a password.'); return; }
+    setLobbyError('');
+    if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); }
+    connect(pw);
+  }
+
+  function setLobbyError(msg) {
+    document.getElementById('lobby-error').textContent = msg;
+  }
+
+  // ---- Waiting ----
+  document.getElementById('leave-btn').addEventListener('click', () => {
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    showScreen('lobby');
+  });
+
+  // ---- Game board ----
+  const boardEl = document.getElementById('board');
+  const turnDot = document.getElementById('turn-dot');
+  const turnText = document.getElementById('turn-text');
+
+  function startGame() {
+    gameOver = false;
+    document.getElementById('rematch-btn').style.display = 'none';
+    document.getElementById('rematch-info').textContent = '';
+    document.getElementById('my-color-label').textContent = capitalize(myColor);
+    buildBoard();
+    setTurn('black'); // black always goes first
+    showScreen('game');
+  }
+
+  function buildBoard() {
+    boardEl.innerHTML = '';
+    boardEl.classList.remove('not-my-turn');
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+
+        if (r === 0) cell.classList.add('top');
+        if (r === BOARD_SIZE - 1) cell.classList.add('bottom');
+        if (c === 0) cell.classList.add('left');
+        if (c === BOARD_SIZE - 1) cell.classList.add('right');
+
+        if (STAR_POINTS.has(`${r},${c}`)) {
+          const dot = document.createElement('div');
+          dot.className = 'star-dot';
+          cell.appendChild(dot);
+        }
+
+        const ghost = document.createElement('div');
+        ghost.className = `ghost ${myColor}-ghost`;
+        cell.appendChild(ghost);
+
+        cell.addEventListener('click', onCellClick);
+        boardEl.appendChild(cell);
+      }
+    }
+    updateBoardInteractivity('black'); // black goes first
+  }
+
+  function resetBoard() {
+    gameOver = false;
+    document.getElementById('rematch-btn').style.display = 'none';
+    document.getElementById('rematch-info').textContent = '';
+    buildBoard();
+    setTurn('black');
+  }
+
+  function onCellClick(e) {
+    if (gameOver) return;
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
+    if (e.currentTarget.querySelector('.piece')) return; // occupied
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'move', row: r, col: c }));
+    }
+  }
+
+  function applyMove(r, c, color, winLine) {
+    playPlaceSound();
+    const cell = boardEl.children[r * BOARD_SIZE + c];
+    const ghost = cell.querySelector('.ghost');
+    if (ghost) ghost.style.display = 'none';
+
+    const piece = document.createElement('div');
+    piece.className = `piece ${color}`;
+    cell.appendChild(piece);
+
+    if (winLine) {
+      endGame(color, winLine);
+    } else {
+      const next = color === 'black' ? 'white' : 'black';
+      setTurn(next);
+      updateBoardInteractivity(next);
+    }
+  }
+
+  function setTurn(player) {
+    const isBlack = player === 'black';
+    turnDot.style.background = isBlack ? '#222' : '#f5f5f5';
+    turnDot.style.border = isBlack ? '2px solid #555' : '2px solid #999';
+    turnText.textContent = `${capitalize(player)}'s turn`;
+  }
+
+  function updateBoardInteractivity(currentPlayer) {
+    if (currentPlayer === myColor) {
+      boardEl.classList.remove('not-my-turn');
+    } else {
+      boardEl.classList.add('not-my-turn');
+    }
+  }
+
+  function endGame(winner, winLine) {
+    gameOver = true;
+    scores[winner]++;
+    document.getElementById('black-wins').textContent = scores.black;
+    document.getElementById('white-wins').textContent = scores.white;
+
+    winLine.forEach(([r, c]) => {
+      const cell = boardEl.children[r * BOARD_SIZE + c];
+      const piece = cell.querySelector('.piece');
+      if (piece) piece.classList.add('winner');
+    });
+
+    const isBlack = winner === 'black';
+    turnDot.style.background = isBlack ? '#222' : '#f5f5f5';
+    turnDot.style.border = isBlack ? '2px solid #555' : '2px solid #999';
+    turnText.textContent = `${capitalize(winner)} wins!`;
+    boardEl.classList.add('not-my-turn');
+
+    playWinSound();
+    document.getElementById('rematch-btn').style.display = '';
+  }
+
+  // ---- Rematch ----
+  document.getElementById('rematch-btn').addEventListener('click', () => {
+    document.getElementById('rematch-btn').disabled = true;
+    document.getElementById('rematch-info').textContent = 'Waiting for opponent…';
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'rematch' }));
+  });
+
+  // ---- Quit ----
+  document.getElementById('quit-btn').addEventListener('click', () => {
+    if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; }
+    scores = { black: 0, white: 0 };
+    document.getElementById('black-wins').textContent = '0';
+    document.getElementById('white-wins').textContent = '0';
+    pwdInput.value = '';
+    setLobbyError('');
+    showScreen('lobby');
+  });
+
+  // ---- Disconnected banner ----
+  function showDisconnectedBanner(msg) {
+    const b = document.getElementById('disconnected-banner');
+    b.textContent = msg;
+    b.classList.add('visible');
+  }
+  function hideBanner() {
+    document.getElementById('disconnected-banner').classList.remove('visible');
+  }
+
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+</script>
+</body>
+</html>

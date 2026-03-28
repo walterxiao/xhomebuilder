@@ -1,8 +1,4 @@
-# AI Code Repository
-
-This repository contains projects and code snippets related to AI and other web development experiments.
-
-## Connect-5 (Multiplayer Gomoku)
+# Connect-5 (Multiplayer Gomoku)
 
 A two-player Connect-5 (Gomoku) game playable in the browser over a network. Each player enters their name, gets matched automatically, and takes turns placing pieces. First to get 5 in a row — horizontal, vertical, or diagonal — wins.
 

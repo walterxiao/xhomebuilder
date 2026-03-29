@@ -8,7 +8,7 @@ const battleship = require('./games/battleship');
 const pictionary = require('./games/pictionary');
 const presence = require('./games/presence');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 9753;
 
 const PAGES = {
   '/':           'index.html',

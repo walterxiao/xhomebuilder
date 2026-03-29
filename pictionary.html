@@ -894,29 +894,40 @@ function buildPainterPanel() {
   panel.appendChild(clearBtn);
 }
 
-function buildGuesserPanel(animals) {
+function buildGuesserPanel() {
   const panel = document.getElementById('side-panel');
   panel.innerHTML = '';
 
   const label = document.createElement('div');
   label.className = 'side-section-label';
-  label.textContent = 'Pick the Animal';
+  label.textContent = 'Your Guess';
   panel.appendChild(label);
 
-  const grid = document.createElement('div');
-  grid.className = 'animal-grid';
-  animals.forEach(animal => {
-    const btn = document.createElement('button');
-    btn.className = 'animal-btn';
-    btn.textContent = animal;
-    btn.addEventListener('click', () => {
-      // Disable all immediately
-      document.querySelectorAll('.animal-btn').forEach(b => b.disabled = true);
-      wsSend({ type: 'pic_guess', animal });
-    });
-    grid.appendChild(btn);
-  });
-  panel.appendChild(grid);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 40;
+  input.placeholder = 'Type your answer...';
+  input.autocomplete = 'off';
+  input.style.cssText = 'width:100%;padding:8px 10px;background:#1a1a2e;border:1px solid #2a2a5a;border-radius:6px;color:#e0e0e0;font-size:0.9rem;font-family:inherit;outline:none;';
+  input.addEventListener('focus', () => { input.style.borderColor = '#d4af37'; });
+  input.addEventListener('blur',  () => { input.style.borderColor = '#2a2a5a'; });
+  panel.appendChild(input);
+
+  const btn = document.createElement('button');
+  btn.textContent = 'Guess';
+  btn.style.cssText = 'width:100%;padding:9px;background:#d4af37;color:#1a1a2e;border:none;border-radius:6px;font-size:0.9rem;font-family:inherit;cursor:pointer;font-weight:bold;margin-top:6px;';
+  btn.addEventListener('click', submitGuess);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submitGuess(); });
+  panel.appendChild(btn);
+
+  function submitGuess() {
+    const animal = input.value.trim();
+    if (!animal) return;
+    input.disabled = true;
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    wsSend({ type: 'pic_guess', animal });
+  }
 }
 
 function buildObserverPanel() {
@@ -1029,7 +1040,7 @@ function handleMessage(msg) {
         painterName = msg.painterName || 'Painter';
         document.getElementById('word-label').textContent = '';
         document.getElementById('word-value').textContent = `${painterName} is drawing...`;
-        buildGuesserPanel(myAnimalList);
+        buildGuesserPanel();
       }
 
       updateTimer(timerRemaining);

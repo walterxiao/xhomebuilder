@@ -310,7 +310,7 @@ function handleGuess(ws, animal) {
   if (ws.picRole !== 'guesser') return;
   if (ws.picStatus !== 'guessing') return;
 
-  const correct = animal === session.answer;
+  const correct = animal.trim().toLowerCase() === session.answer.toLowerCase();
   const newStatus = correct ? 'correct' : 'wrong';
 
   ws.picStatus = newStatus;

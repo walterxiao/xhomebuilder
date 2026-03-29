@@ -139,40 +139,66 @@ function handleStart(ws) {
     return;
   }
 
-  // Pick 10 random unique animals
+  // Pick 10 random unique animals and a default answer
   const shuffled = ANIMALS.slice().sort(() => Math.random() - 0.5);
   const animals = shuffled.slice(0, 10);
-  const answer = animals[Math.floor(Math.random() * animals.length)];
+  const defaultAnswer = animals[Math.floor(Math.random() * animals.length)];
 
   session.animals = animals;
-  session.answer = answer;
-  session.phase = 'playing';
+  session.answer = defaultAnswer;
+  session.phase = 'choosing';
   session.drawLog = [];
 
-  let remaining = 300;
+  // Painter picks their word; guessers wait
+  send(session.painter.ws, {
+    type: 'pic_choose_word',
+    defaultWord: defaultAnswer,
+  });
 
+  for (const g of session.guessers) {
+    send(g.ws, { type: 'pic_waiting_word', painterName: session.painter.name });
+  }
+}
+
+function handleConfirmWord(ws, word) {
+  const sessionId = ws.picSessionId;
+  if (sessionId === null) return;
+  const session = sessions.get(sessionId);
+  if (!session || session.phase !== 'choosing') return;
+  if (!session.painter || session.painter.ws !== ws) return;
+
+  let finalWord = typeof word === 'string' ? word.trim().slice(0, 30) : '';
+  if (!finalWord) finalWord = session.answer; // fall back to default
+
+  // Replace the server-assigned default in the animals list with the custom word
+  if (finalWord !== session.answer) {
+    const idx = session.animals.indexOf(session.answer);
+    if (idx !== -1) session.animals[idx] = finalWord;
+  }
+  session.answer = finalWord;
+  session.phase = 'playing';
+
+  let remaining = 300;
   session.timer = setInterval(() => {
     remaining--;
     broadcast(session, { type: 'pic_tick', remaining });
-    if (remaining <= 0) {
-      endGame(sessionId, null);
-    }
+    if (remaining <= 0) endGame(sessionId, null);
   }, 1000);
 
   send(session.painter.ws, {
     type: 'pic_start_game',
     role: 'painter',
-    answer,
-    duration: 300
+    answer: finalWord,
+    duration: 300,
   });
 
   for (const g of session.guessers) {
     send(g.ws, {
       type: 'pic_start_game',
       role: 'guesser',
-      animals,
+      animals: session.animals,
       duration: 300,
-      painterName: session.painter.name
+      painterName: session.painter.name,
     });
   }
 }
@@ -340,7 +366,7 @@ function handleChat(ws, text) {
   if (sessionId === null) return;
   const session = sessions.get(sessionId);
   if (!session) return;
-  if (session.phase !== 'lobby' && session.phase !== 'playing') return;
+  if (session.phase !== 'lobby' && session.phase !== 'choosing' && session.phase !== 'playing') return;
 
   if (typeof text !== 'string') return;
   text = text.trim().slice(0, 200);
@@ -397,7 +423,8 @@ wss.on('connection', (ws) => {
       case 'pic_sessions':   handleListSessions(ws); break;
       case 'pic_create':     handleCreate(ws, msg.name); break;
       case 'pic_join':       handleJoin(ws, msg.sessionId, msg.name); break;
-      case 'pic_start':      handleStart(ws); break;
+      case 'pic_start':        handleStart(ws); break;
+      case 'pic_confirm_word': handleConfirmWord(ws, msg.word); break;
       case 'pic_draw':       handleDraw(ws, msg); break;
       case 'pic_clear':      handleClear(ws); break;
       case 'pic_guess':      handleGuess(ws, msg.animal); break;

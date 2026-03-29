@@ -2,13 +2,62 @@
 
 const { WebSocketServer } = require('ws');
 
-const ANIMALS = [
-  'Cat','Dog','Fish','Bird','Horse','Elephant','Giraffe','Lion','Tiger','Bear',
-  'Rabbit','Frog','Snake','Turtle','Butterfly','Bee','Spider','Crab','Duck','Penguin',
-  'Owl','Pig','Cow','Shark','Whale','Dolphin','Octopus','Kangaroo','Panda','Koala',
-  'Parrot','Eagle','Flamingo','Zebra','Crocodile','Gorilla','Monkey','Fox','Wolf','Deer',
-  'Squirrel','Bat','Jellyfish','Lobster','Hedgehog','Camel','Peacock','Seal','Mouse','Hippo'
-];
+const WORD_CATEGORIES = {
+  Animals: [
+    'Cat','Dog','Fish','Bird','Horse','Elephant','Giraffe','Lion','Tiger','Bear',
+    'Rabbit','Frog','Snake','Turtle','Butterfly','Bee','Spider','Crab','Duck','Penguin',
+    'Owl','Pig','Cow','Shark','Whale','Dolphin','Octopus','Kangaroo','Panda','Koala',
+    'Parrot','Eagle','Flamingo','Zebra','Crocodile','Gorilla','Monkey','Fox','Wolf','Deer',
+    'Squirrel','Bat','Jellyfish','Lobster','Hedgehog','Camel','Peacock','Seal','Mouse','Hippo',
+  ],
+  Foods: [
+    'Pizza','Sushi','Burger','Pasta','Taco','Waffle','Pancake','Salad','Steak','Soup',
+    'Donut','Cookie','Cake','Sandwich','Noodle','Rice','Egg','Cheese','Bread','Popcorn',
+    'Hot Dog','Ice Cream','Chocolate','Candy','Apple','Banana','Strawberry','Watermelon',
+    'Mango','Orange','Grape','Pineapple','Peach','Lemon','Cherry','Coconut','Avocado',
+    'Carrot','Broccoli','Mushroom','Dumpling','Burrito','Croissant','Pretzel','Pudding',
+  ],
+  Vehicles: [
+    'Car','Truck','Bus','Bicycle','Motorcycle','Airplane','Helicopter','Boat','Ship',
+    'Train','Submarine','Rocket','Skateboard','Scooter','Tractor','Tank','Hot Air Balloon',
+    'Ambulance','Fire Truck','Race Car','Sailboat','Canoe','Yacht','Spaceship','Jeep',
+    'Van','Pickup Truck','Ferry','Cable Car','Hovercraft','Snowplow','Forklift',
+  ],
+  Sports: [
+    'Soccer','Basketball','Tennis','Swimming','Baseball','Golf','Volleyball','Boxing',
+    'Skiing','Surfing','Running','Cycling','Gymnastics','Archery','Fishing','Karate',
+    'Wrestling','Ice Skating','Rowing','Climbing','Rugby','Cricket','Badminton',
+    'Table Tennis','Bowling','Fencing','Diving','Snowboarding','Skateboarding','Polo',
+    'Weightlifting','Triathlon','Judo',
+  ],
+  Nature: [
+    'Mountain','River','Ocean','Forest','Desert','Waterfall','Volcano','Rainbow',
+    'Cloud','Lightning','Snow','Rain','Cave','Island','Beach','Cliff','Valley',
+    'Glacier','Tornado','Sunset','Moon','Star','Sun','Tree','Flower','Grass',
+    'Leaf','Rock','Sand','Mud','Swamp','Meadow','Coral Reef','Iceberg',
+  ],
+  Household: [
+    'Chair','Table','Lamp','Door','Window','Bed','Sofa','Fridge','Oven','Sink',
+    'Mirror','Clock','Telephone','Computer','Television','Pillow','Blanket','Carpet',
+    'Bookshelf','Bathtub','Toilet','Stairs','Drawer','Cabinet','Fan','Microwave',
+    'Kettle','Cup','Fork','Spoon','Broom','Candle','Vase','Umbrella',
+  ],
+  Clothing: [
+    'Shirt','Pants','Hat','Shoes','Dress','Jacket','Socks','Scarf','Gloves','Boots',
+    'Tie','Belt','Skirt','Shorts','Coat','Swimsuit','Sunglasses','Backpack','Watch',
+    'Ring','Necklace','Earring','Sneakers','Sandals','Jeans','Sweater','Hoodie',
+    'Vest','Cap','Mittens','Toga','Tuxedo','Kimono',
+  ],
+  Professions: [
+    'Doctor','Teacher','Chef','Firefighter','Police Officer','Pilot','Farmer','Dentist',
+    'Nurse','Engineer','Scientist','Artist','Musician','Plumber','Electrician','Lawyer',
+    'Astronaut','Carpenter','Sailor','Baker','Butcher','Journalist','Photographer',
+    'Librarian','Magician','Clown','Judge','Soldier','Archaeologist','Lifeguard',
+  ],
+};
+
+const CATEGORY_NAMES = Object.keys(WORD_CATEGORIES);
+const ALL_WORDS = [].concat(...Object.values(WORD_CATEGORIES));
 
 const sessions = new Map();
 let nextSessionId = 1;
@@ -74,6 +123,7 @@ function handleCreate(ws, name) {
     phase: 'lobby',
     painter: { ws, name },
     guessers: [],
+    category: null,
     animals: [],
     answer: null,
     timer: null,
@@ -139,11 +189,18 @@ function handleStart(ws) {
     return;
   }
 
-  // Pick 10 random unique animals and a default answer
-  const shuffled = ANIMALS.slice().sort(() => Math.random() - 0.5);
-  const animals = shuffled.slice(0, 10);
-  const defaultAnswer = animals[Math.floor(Math.random() * animals.length)];
+  // Pick answer from a random category; pick 9 decoys from the full word pool
+  const category = CATEGORY_NAMES[Math.floor(Math.random() * CATEGORY_NAMES.length)];
+  const categoryWords = WORD_CATEGORIES[category];
+  const defaultAnswer = categoryWords[Math.floor(Math.random() * categoryWords.length)];
 
+  const decoys = ALL_WORDS
+    .filter(w => w !== defaultAnswer)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 9);
+  const animals = [defaultAnswer, ...decoys].sort(() => Math.random() - 0.5);
+
+  session.category = category;
   session.animals = animals;
   session.answer = defaultAnswer;
   session.phase = 'choosing';
@@ -153,6 +210,7 @@ function handleStart(ws) {
   send(session.painter.ws, {
     type: 'pic_choose_word',
     defaultWord: defaultAnswer,
+    category,
   });
 
   for (const g of session.guessers) {
@@ -170,10 +228,13 @@ function handleConfirmWord(ws, word) {
   let finalWord = typeof word === 'string' ? word.trim().slice(0, 30) : '';
   if (!finalWord) finalWord = session.answer; // fall back to default
 
-  // Replace the server-assigned default in the animals list with the custom word
   if (finalWord !== session.answer) {
-    const idx = session.animals.indexOf(session.answer);
-    if (idx !== -1) session.animals[idx] = finalWord;
+    // Custom word: rebuild 9 decoys from full pool (excluding the custom word)
+    const decoys = ALL_WORDS
+      .filter(w => w !== finalWord)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 9);
+    session.animals = [finalWord, ...decoys].sort(() => Math.random() - 0.5);
   }
   session.answer = finalWord;
   session.phase = 'playing';

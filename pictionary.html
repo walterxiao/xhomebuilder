@@ -593,7 +593,7 @@
       text-align: center;
     }
     #word-pick-input:focus { outline: 2px solid #d4af37; }
-    #btn-confirm-word {
+    #btn-use-assigned {
       width: 100%;
       padding: 12px 32px;
       background: #d4af37;
@@ -606,7 +606,19 @@
       font-weight: bold;
       letter-spacing: 1px;
     }
-    #btn-confirm-word:hover { background: #c49b2a; }
+    #btn-use-assigned:hover { background: #c49b2a; }
+    #btn-confirm-word {
+      padding: 10px 18px;
+      background: #16213e;
+      color: #d4af37;
+      border: 1px solid #d4af37;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #btn-confirm-word:hover { background: #d4af37; color: #1a1a2e; }
 
     /* ── Responsive ── */
     @media (max-width: 820px) {
@@ -668,9 +680,12 @@
     <div class="word-pick-title">YOUR WORD</div>
     <div class="word-pick-subtitle">Draw this animal — or type your own below</div>
     <div class="word-pick-assigned" id="word-pick-default"></div>
+    <button id="btn-use-assigned">Draw This Word</button>
     <div class="word-pick-or">— or enter your own —</div>
-    <input id="word-pick-input" type="text" maxlength="30" placeholder="Custom word..." autocomplete="off" />
-    <button id="btn-confirm-word">Start Drawing!</button>
+    <div style="display:flex;gap:8px;width:100%;">
+      <input id="word-pick-input" type="text" maxlength="30" placeholder="Custom word..." autocomplete="off" style="flex:1;" />
+      <button id="btn-confirm-word">Draw</button>
+    </div>
   </div>
 </div>
 
@@ -980,6 +995,8 @@ function handleMessage(msg) {
 
     case 'pic_choose_word':
       document.getElementById('word-pick-default').textContent = msg.defaultWord.toUpperCase();
+      document.getElementById('word-pick-subtitle').textContent =
+        `Category: ${msg.category} — draw this, or type your own below`;
       document.getElementById('word-pick-input').value = '';
       showScreen('screen-word-pick');
       break;
@@ -1212,6 +1229,10 @@ document.getElementById('btn-start').addEventListener('click', () => {
   wsSend({ type: 'pic_start' });
 });
 
+document.getElementById('btn-use-assigned').addEventListener('click', () => {
+  wsSend({ type: 'pic_confirm_word', word: '' }); // empty = use default
+});
+
 document.getElementById('btn-confirm-word').addEventListener('click', confirmWord);
 document.getElementById('word-pick-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') confirmWord();
@@ -1219,6 +1240,7 @@ document.getElementById('word-pick-input').addEventListener('keydown', e => {
 
 function confirmWord() {
   const word = document.getElementById('word-pick-input').value.trim().slice(0, 30);
+  if (!word) { document.getElementById('word-pick-input').focus(); return; }
   wsSend({ type: 'pic_confirm_word', word });
 }
 

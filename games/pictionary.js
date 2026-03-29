@@ -129,6 +129,7 @@ function handleCreate(ws, name) {
     timer: null,
     drawLog: [],
     playAgainVotes: new Set(),
+    lastPainterName: null,
   };
   sessions.set(sessionId, session);
 
@@ -182,11 +183,32 @@ function handleStart(ws) {
   const sessionId = ws.picSessionId;
   if (sessionId === null) return;
   const session = sessions.get(sessionId);
-  if (!session) return;
+  if (!session || session.phase !== 'lobby') return;
   if (!session.painter || session.painter.ws !== ws) return;
-  if (session.guessers.length < 1) {
-    send(ws, { type: 'pic_error', message: 'Need at least 1 guesser to start.' });
+
+  // Collect all connected players
+  const allPlayers = getAllPlayers(session).filter(p => p.ws.readyState === 1);
+  if (allPlayers.length < 2) {
+    send(ws, { type: 'pic_error', message: 'Need at least 1 other player to start.' });
     return;
+  }
+
+  // Randomly pick painter, excluding last game's painter
+  const eligible = allPlayers.filter(p => p.name !== session.lastPainterName);
+  const pool = eligible.length > 0 ? eligible : allPlayers;
+  const newPainter = pool[Math.floor(Math.random() * pool.length)];
+  const newGuessers = allPlayers.filter(p => p !== newPainter);
+
+  // Reassign roles
+  session.painter = { ws: newPainter.ws, name: newPainter.name };
+  session.guessers = newGuessers.map(p => ({ ws: p.ws, name: p.name, status: 'guessing', guessesLeft: 3 }));
+  session.lastPainterName = newPainter.name;
+
+  newPainter.ws.picRole = 'painter';
+  newPainter.ws.picStatus = null;
+  for (const g of session.guessers) {
+    g.ws.picRole = 'guesser';
+    g.ws.picStatus = 'guessing';
   }
 
   // Pick answer from a random category; pick 9 decoys from the full word pool
@@ -396,10 +418,11 @@ function startRematch(sessionId) {
   const connected = getAllPlayers(session).filter(p => p.ws.readyState === 1);
   if (connected.length < 2) return;
 
-  // Pick random painter
-  const painterIdx = Math.floor(Math.random() * connected.length);
-  const newPainter = connected[painterIdx];
-  const newGuessers = connected.filter((_, i) => i !== painterIdx);
+  // Pick random painter, excluding last game's painter
+  const eligible = connected.filter(p => p.name !== session.lastPainterName);
+  const pool = eligible.length > 0 ? eligible : connected;
+  const newPainter = pool[Math.floor(Math.random() * pool.length)];
+  const newGuessers = connected.filter(p => p !== newPainter);
 
   // Reset session
   session.phase = 'lobby';
@@ -407,6 +430,7 @@ function startRematch(sessionId) {
   session.answer = null;
   session.drawLog = [];
   session.playAgainVotes.clear();
+  session.lastPainterName = newPainter.name;
   session.painter = { ws: newPainter.ws, name: newPainter.name };
   session.guessers = newGuessers.map(p => ({ ws: p.ws, name: p.name, status: 'guessing', guessesLeft: 3 }));
 

@@ -1074,8 +1074,10 @@ function handleMessage(msg) {
       break;
 
     case 'pic_waiting_word':
+      myRole = 'guesser';
       document.getElementById('lobby-hint').textContent =
         `Waiting for ${escHtml(msg.painterName)} to choose a word...`;
+      document.getElementById('btn-start').style.display = 'none';
       break;
 
     case 'pic_start_game': {

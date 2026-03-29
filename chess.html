@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      font-family: 'Georgia', serif;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Name overlay ── */
+    #name-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nov-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 40px 36px;
+      text-align: center;
+      width: 320px;
+    }
+    .nov-title { font-size: 1.1rem; letter-spacing: 4px; color: #d4af37; text-transform: uppercase; margin-bottom: 6px; }
+    .nov-sub   { font-size: 0.78rem; color: #555577; letter-spacing: 2px; margin-bottom: 20px; }
+    #name-overlay input {
+      width: 100%; background: #0f0f22; border: 1px solid #2a2a5a;
+      border-radius: 4px; color: #e0e0e0; padding: 8px 12px;
+      font-size: 0.95rem; font-family: inherit; outline: none;
+      box-sizing: border-box; margin-bottom: 10px;
+    }
+    #name-overlay input:focus { border-color: #d4af37; }
+    #name-overlay button {
+      width: 100%; background: #16213e; border: 1px solid #2a2a5a;
+      border-radius: 4px; color: #d4af37; padding: 10px;
+      font-size: 0.9rem; font-family: inherit; cursor: pointer; letter-spacing: 1px;
+    }
+    #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
+
+    /* ── Screens ── */
+    .screen { display: none; }
+    .screen.active { display: flex; }
+
+    /* ── Menu screen ── */
+    #screen-menu {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    #screen-menu h1 {
+      font-size: 2.8rem;
+      letter-spacing: 10px;
+      color: #d4af37;
+      text-shadow: 0 0 24px rgba(212,175,55,0.4);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    #screen-menu .subtitle {
+      font-size: 0.82rem;
+      color: #555577;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 48px;
+    }
+    .menu-btns { display: flex; flex-direction: column; gap: 14px; width: 260px; }
+    .btn-gold {
+      padding: 14px 20px;
+      background: #d4af37;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      font-family: 'Georgia', serif;
+      font-weight: bold;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      text-transform: uppercase;
+    }
+    .btn-gold:hover { background: #f0c040; }
+    .btn-outline {
+      padding: 14px 20px;
+      background: transparent;
+      color: #9090b0;
+      border: 1px solid #3a3a6a;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      font-family: 'Georgia', serif;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      text-transform: uppercase;
+    }
+    .btn-outline:hover { border-color: #d4af37; color: #d4af37; }
+    .back-link {
+      margin-top: 32px;
+      font-size: 0.78rem;
+      color: #444466;
+      letter-spacing: 2px;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+    .back-link:hover { color: #d4af37; }
+
+    /* ── Waiting screen ── */
+    #screen-waiting {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    #screen-waiting .wait-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 48px 56px;
+      text-align: center;
+    }
+    .wait-title { font-size: 1.2rem; letter-spacing: 4px; color: #d4af37; text-transform: uppercase; margin-bottom: 12px; }
+    .wait-sub   { font-size: 0.82rem; color: #555577; letter-spacing: 2px; }
+    .wait-dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    @keyframes dots {
+      0%   { content: ''; }
+      25%  { content: '.'; }
+      50%  { content: '..'; }
+      75%  { content: '...'; }
+      100% { content: ''; }
+    }
+
+    /* ── Observe list screen ── */
+    #screen-observe-list {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .obs-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 32px 40px;
+      width: 400px;
+      max-width: 95vw;
+    }
+    .obs-title { font-size: 1rem; letter-spacing: 4px; color: #d4af37; text-transform: uppercase; margin-bottom: 20px; }
+    #obs-list { min-height: 60px; margin-bottom: 20px; }
+    .obs-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid #2a2a5a;
+    }
+    .obs-row:last-child { border-bottom: none; }
+    .obs-names { font-size: 0.9rem; color: #c0c0d8; }
+    .obs-names em { color: #7070a0; font-size: 0.78rem; font-style: normal; }
+    .obs-empty { color: #444466; font-size: 0.82rem; letter-spacing: 1px; text-align: center; padding: 20px 0; }
+    .obs-row-btns { display: flex; gap: 8px; }
+    .obs-controls { display: flex; gap: 10px; }
+
+    /* ── Game screen ── */
+    #screen-game {
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    #game-header {
+      background: #16213e;
+      border-bottom: 1px solid #2a2a5a;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .hdr-players { font-size: 0.85rem; color: #7070a0; letter-spacing: 1px; }
+    .hdr-players strong { color: #d4af37; }
+    #turn-indicator {
+      font-size: 0.88rem;
+      letter-spacing: 2px;
+      color: #e0e0e0;
+      text-transform: uppercase;
+    }
+    #turn-indicator.check { color: #e05050; }
+    #resign-btn {
+      padding: 7px 16px;
+      background: transparent;
+      color: #e05050;
+      border: 1px solid #5a2a2a;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-family: 'Georgia', serif;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    #resign-btn:hover { border-color: #e05050; }
+    #observer-badge {
+      font-size: 0.75rem;
+      color: #7070a0;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border: 1px solid #2a2a5a;
+      border-radius: 4px;
+    }
+
+    /* Main area */
+    #game-main {
+      display: flex;
+      flex: 1;
+      gap: 0;
+      justify-content: center;
+      padding: 20px;
+      align-items: flex-start;
+    }
+
+    /* Board area */
+    #board-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #board-outer {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    #rank-labels {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      margin-right: 6px;
+      height: calc(8 * var(--sq));
+    }
+    .rank-lbl {
+      font-size: 0.72rem;
+      color: #7070a0;
+      height: var(--sq);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+    }
+    #file-labels {
+      display: flex;
+      justify-content: space-around;
+      width: calc(8 * var(--sq));
+      margin-top: 4px;
+      margin-left: 22px;
+    }
+    .file-lbl { font-size: 0.72rem; color: #7070a0; width: var(--sq); text-align: center; }
+
+    :root { --sq: 64px; }
+    @media (max-width: 700px) { :root { --sq: 44px; } }
+    @media (max-width: 480px) { :root { --sq: 36px; } }
+
+    #chess-board {
+      display: grid;
+      grid-template-columns: repeat(8, var(--sq));
+      grid-template-rows: repeat(8, var(--sq));
+      border: 2px solid #2a2a5a;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .sq {
+      width: var(--sq);
+      height: var(--sq);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      font-size: calc(var(--sq) * 0.72);
+      line-height: 1;
+      transition: background 0.08s;
+    }
+    .sq.light { background: #f0d9b5; }
+    .sq.dark  { background: #b58863; }
+    /* White pieces need a dark outline to stand out on light squares */
+    .sq .piece-w {
+      color: #fff;
+      text-shadow:
+        0 0 2px #000,
+        1px 1px 0 #333,
+       -1px -1px 0 #333,
+        1px -1px 0 #333,
+       -1px  1px 0 #333;
+    }
+    /* Black pieces get a subtle light outline for symmetry */
+    .sq .piece-b {
+      color: #1a1a1a;
+      text-shadow:
+        0 0 2px rgba(255,255,255,0.3),
+        1px 1px 0 rgba(255,255,255,0.15);
+    }
+    .sq.selected   { background: rgba(0,200,0,0.4) !important; }
+    .sq.last-move  { background: rgba(205,209,110,0.4) !important; }
+    .sq.in-check   { background: rgba(220,50,50,0.5) !important; }
+    .sq.legal-dest::after {
+      content: '';
+      position: absolute;
+      width: 34%;
+      height: 34%;
+      border-radius: 50%;
+      background: rgba(0,180,0,0.45);
+      pointer-events: none;
+    }
+    .sq.legal-capture::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 0;
+      background: transparent;
+      border: 4px solid rgba(0,180,0,0.45);
+      pointer-events: none;
+    }
+
+    /* Right panel */
+    #right-panel {
+      width: 220px;
+      margin-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .panel-box {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .panel-title {
+      font-size: 0.72rem;
+      letter-spacing: 3px;
+      color: #555577;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      border-bottom: 1px solid #2a2a5a;
+    }
+    #move-history {
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      color: #9090b0;
+      max-height: 200px;
+      overflow-y: auto;
+      line-height: 1.7;
+    }
+    #move-history:empty::before { content: 'No moves yet'; color: #444466; }
+
+    .move-pair { display: flex; gap: 6px; }
+    .move-num  { color: #444466; min-width: 20px; }
+    .move-w    { color: #e0e0e0; min-width: 60px; }
+    .move-b    { color: #9090b0; }
+
+    #chat-messages {
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      color: #9090b0;
+      max-height: 180px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    #chat-messages:empty::before { content: 'No messages'; color: #444466; }
+    .chat-line strong { color: #d4af37; }
+    #chat-input-row {
+      display: flex;
+      border-top: 1px solid #2a2a5a;
+    }
+    #chat-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 8px 10px;
+      color: #e0e0e0;
+      font-size: 0.78rem;
+      font-family: 'Georgia', serif;
+    }
+    #chat-send {
+      padding: 0 10px;
+      background: transparent;
+      border: none;
+      border-left: 1px solid #2a2a5a;
+      color: #d4af37;
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+    #chat-send:hover { background: #1e2e54; }
+
+    /* ── Over screen ── */
+    #screen-over {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+    }
+    .over-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 36px 48px;
+      text-align: center;
+    }
+    #over-result {
+      font-size: 1.6rem;
+      letter-spacing: 4px;
+      color: #d4af37;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    #over-reason { font-size: 0.85rem; color: #7070a0; letter-spacing: 2px; margin-bottom: 24px; }
+    .over-btns { display: flex; gap: 12px; justify-content: center; }
+    #play-again-btn { min-width: 160px; }
+
+    /* Final board on over screen */
+    #final-board-wrap { transform-origin: top center; }
+
+    /* Promotion modal */
+    #promo-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #promo-modal.show { display: flex; }
+    .promo-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 28px 32px;
+      text-align: center;
+    }
+    .promo-title { font-size: 0.82rem; color: #d4af37; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 16px; }
+    .promo-pieces { display: flex; gap: 12px; justify-content: center; }
+    .promo-btn {
+      width: 60px; height: 60px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a5a;
+      border-radius: 4px;
+      font-size: 2.4rem;
+      line-height: 1;
+      cursor: pointer;
+      color: #e0e0e0;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s;
+    }
+    .promo-btn:hover { border-color: #d4af37; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a5a; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Chess</div>
+    <div class="nov-sub">Choose your name to play</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
+<!-- Promotion modal -->
+<div id="promo-modal">
+  <div class="promo-card">
+    <div class="promo-title">Promote Pawn</div>
+    <div class="promo-pieces" id="promo-pieces"></div>
+  </div>
+</div>
+
+<!-- SCREEN: Menu -->
+<div id="screen-menu" class="screen active">
+  <h1>Chess</h1>
+  <p class="subtitle">Two-player strategy</p>
+  <div class="menu-btns">
+    <button class="btn-gold" id="btn-find">Find Opponent</button>
+    <button class="btn-outline" id="btn-watch">Watch a Game</button>
+  </div>
+  <a href="/" class="back-link">&#8592; Back to Hub</a>
+</div>
+
+<!-- SCREEN: Waiting -->
+<div id="screen-waiting" class="screen">
+  <div class="wait-card">
+    <div class="wait-title">Waiting for Opponent</div>
+    <div class="wait-sub">Searching for a match<span class="wait-dots"></span></div>
+  </div>
+</div>
+
+<!-- SCREEN: Observe list -->
+<div id="screen-observe-list" class="screen">
+  <div class="obs-card">
+    <div class="obs-title">Active Games</div>
+    <div id="obs-list"></div>
+    <div class="obs-controls">
+      <button class="btn-outline" id="obs-refresh-btn">Refresh</button>
+      <button class="btn-outline" id="obs-back-btn">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Game -->
+<div id="screen-game" class="screen">
+  <div id="game-header">
+    <div class="hdr-players" id="hdr-players">...</div>
+    <div id="turn-indicator">...</div>
+    <div id="hdr-right">
+      <button id="resign-btn">Resign</button>
+      <div id="observer-badge" style="display:none">Observing</div>
+    </div>
+  </div>
+  <div id="game-main">
+    <div id="board-wrap">
+      <div id="board-outer">
+        <div id="rank-labels"></div>
+        <div>
+          <div id="chess-board"></div>
+          <div id="file-labels"></div>
+        </div>
+      </div>
+    </div>
+    <div id="right-panel">
+      <div class="panel-box">
+        <div class="panel-title">Moves</div>
+        <div id="move-history"></div>
+      </div>
+      <div class="panel-box">
+        <div class="panel-title">Chat</div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-row">
+          <input id="chat-input" type="text" maxlength="200" placeholder="Message..." autocomplete="off">
+          <button id="chat-send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: Game over -->
+<div id="screen-over" class="screen">
+  <div class="over-card">
+    <div id="over-result">...</div>
+    <div id="over-reason">...</div>
+    <div class="over-btns">
+      <button class="btn-gold" id="play-again-btn">Play Again</button>
+      <button class="btn-outline" id="back-to-hub-btn">Back to Hub</button>
+    </div>
+  </div>
+  <div id="final-board-wrap">
+    <div id="final-board"></div>
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const PIECE_UNICODE = {
+  wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
+  bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟',
+};
+
+// ── State ───────────────────────────────────────────────────────────────────
+
+let ws = null;
+let myColor = null;      // 'w' | 'b' | null (observer)
+let isObserver = false;
+let gameBoard = null;    // current board
+let gameTurn = null;
+let moveHistory = [];
+let selectedSq = null;   // [row, col] or null
+let legalDests = [];     // [[row,col], ...]
+let lastMove = null;     // { from, to }
+let inCheckColor = null; // 'w' | 'b' | null
+let rematchVoteCount = 0;
+let pendingPromo = null; // { from, to, resolve }
+
+// ── Screens ──────────────────────────────────────────────────────────────────
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+
+function connectWS() {
+  if (ws && ws.readyState < 2) return;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/chess`);
+
+  ws.onmessage = (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    handleMessage(msg);
+  };
+
+  ws.onclose = () => {
+    // Attempt silent reconnect after 2s if not deliberately closed
+  };
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ── Message handling ─────────────────────────────────────────────────────────
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'chess_waiting':
+      showScreen('screen-waiting');
+      break;
+
+    case 'chess_start':
+      setupGame(msg.myColor, msg.opponentName, msg.board, msg.turn, false);
+      showScreen('screen-game');
+      break;
+
+    case 'chess_rematch_start':
+      setupGame(msg.myColor, msg.opponentName, msg.board, msg.turn, false);
+      showScreen('screen-game');
+      break;
+
+    case 'chess_update':
+      gameBoard = msg.board;
+      gameTurn = msg.turn;
+      moveHistory = msg.moveHistory;
+      lastMove = msg.lastMove || null;
+      inCheckColor = msg.check ? msg.turn : null;
+      selectedSq = null;
+      legalDests = [];
+      renderBoard(document.getElementById('chess-board'), gameBoard, false);
+      updateHeader();
+      renderMoveHistory();
+      break;
+
+    case 'chess_over':
+      gameBoard = msg.board;
+      moveHistory = msg.moveHistory;
+      lastMove = null;
+      inCheckColor = null;
+      rematchVoteCount = 0;
+      showGameOver(msg.result, msg.reason, msg.board);
+      break;
+
+    case 'chess_rematch_vote':
+      rematchVoteCount = msg.votes;
+      const btn = document.getElementById('play-again-btn');
+      btn.textContent = rematchVoteCount === 1 ? 'Play Again (1/2)' : 'Play Again';
+      break;
+
+    case 'chess_sessions_list':
+      renderObserveList(msg.sessions);
+      break;
+
+    case 'chess_observe_start':
+      setupObserve(msg);
+      showScreen('screen-game');
+      break;
+
+    case 'chess_opponent_disconnected':
+      alert('Your opponent disconnected. The game has ended.');
+      showScreen('screen-menu');
+      break;
+
+    case 'chess_chat':
+      appendChat(msg.name, msg.text);
+      break;
+
+    case 'chess_error':
+      // Show non-blocking error
+      const ti = document.getElementById('turn-indicator');
+      const old = ti.textContent;
+      ti.textContent = msg.message;
+      ti.style.color = '#e05050';
+      setTimeout(() => { ti.style.color = ''; updateHeader(); }, 2000);
+      break;
+  }
+}
+
+// ── Game setup ───────────────────────────────────────────────────────────────
+
+function setupGame(color, opponentName, board, turn, observing) {
+  myColor = color;
+  isObserver = observing;
+  gameBoard = board;
+  gameTurn = turn;
+  moveHistory = [];
+  selectedSq = null;
+  legalDests = [];
+  lastMove = null;
+  inCheckColor = null;
+  rematchVoteCount = 0;
+
+  const wName = color === 'w' ? (window.hubName || 'You') : opponentName;
+  const bName = color === 'b' ? (window.hubName || 'You') : opponentName;
+
+  document.getElementById('hdr-players').innerHTML =
+    `<strong>&#9812; ${esc(wName)}</strong> &nbsp;|&nbsp; <strong>&#9818; ${esc(bName)}</strong>`;
+
+  document.getElementById('resign-btn').style.display = observing ? 'none' : '';
+  document.getElementById('observer-badge').style.display = observing ? '' : 'none';
+
+  document.getElementById('move-history').innerHTML = '';
+  document.getElementById('chat-messages').innerHTML = '';
+
+  renderBoard(document.getElementById('chess-board'), board, false);
+  updateHeader();
+  buildFileRankLabels();
+}
+
+function setupObserve(msg) {
+  myColor = null;
+  isObserver = true;
+  gameBoard = msg.board;
+  gameTurn = msg.turn;
+  moveHistory = msg.moveHistory || [];
+  selectedSq = null;
+  legalDests = [];
+  lastMove = null;
+  inCheckColor = null;
+
+  const wName = msg.playerNames ? msg.playerNames.w : '';
+  const bName = msg.playerNames ? msg.playerNames.b : '';
+
+  document.getElementById('hdr-players').innerHTML =
+    `<strong>&#9812; ${esc(wName)}</strong> &nbsp;|&nbsp; <strong>&#9818; ${esc(bName)}</strong>`;
+
+  document.getElementById('resign-btn').style.display = 'none';
+  document.getElementById('observer-badge').style.display = '';
+
+  document.getElementById('move-history').innerHTML = '';
+  document.getElementById('chat-messages').innerHTML = '';
+
+  renderBoard(document.getElementById('chess-board'), msg.board, false);
+  updateHeader();
+  renderMoveHistory();
+  buildFileRankLabels();
+
+  if (msg.phase === 'over') {
+    // Show as over
+    showGameOver(msg.result, msg.resultReason, msg.board);
+  }
+}
+
+function buildFileRankLabels() {
+  const flipped = myColor === 'b';
+
+  const rankEl = document.getElementById('rank-labels');
+  rankEl.innerHTML = '';
+  const rankOrder = flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  for (const n of rankOrder) {
+    const d = document.createElement('div');
+    d.className = 'rank-lbl';
+    d.textContent = String(n);
+    rankEl.appendChild(d);
+  }
+
+  const fileEl = document.getElementById('file-labels');
+  fileEl.innerHTML = '';
+  const fileOrder = flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  for (const c of fileOrder) {
+    const d = document.createElement('div');
+    d.className = 'file-lbl';
+    d.textContent = String.fromCharCode(97 + c);
+    fileEl.appendChild(d);
+  }
+}
+
+// ── Board rendering ──────────────────────────────────────────────────────────
+
+function renderBoard(el, board, isFinal) {
+  el.innerHTML = '';
+
+  // Black player sees the board flipped (black at bottom)
+  const flipped = myColor === 'b';
+
+  const legalSet = new Set(legalDests.map(([r,c]) => `${r},${c}`));
+
+  const rows = flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  const cols = flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+
+  for (const r of rows) {
+    for (const c of cols) {
+      const sq = document.createElement('div');
+      sq.className = 'sq ' + ((r + c) % 2 === 0 ? 'light' : 'dark');
+      sq.dataset.r = r;
+      sq.dataset.c = c;
+
+      const isSelected = selectedSq && selectedSq[0] === r && selectedSq[1] === c;
+      const isLastFrom = lastMove && lastMove.from[0] === r && lastMove.from[1] === c;
+      const isLastTo   = lastMove && lastMove.to[0] === r && lastMove.to[1] === c;
+      const cell = board[r][c];
+      const isKingInCheck = inCheckColor && cell && cell.piece === 'K' && cell.color === inCheckColor;
+
+      if (isSelected) sq.classList.add('selected');
+      else if (isLastFrom || isLastTo) sq.classList.add('last-move');
+      if (isKingInCheck) sq.classList.add('in-check');
+
+      if (legalSet.has(`${r},${c}`)) {
+        if (cell && !(selectedSq && board[selectedSq[0]][selectedSq[1]] &&
+            board[selectedSq[0]][selectedSq[1]].color !== cell.color)) {
+          sq.classList.add('legal-capture');
+        } else {
+          sq.classList.add('legal-dest');
+        }
+      }
+
+      if (cell) {
+        const span = document.createElement('span');
+        span.className = `piece-${cell.color}`;
+        span.textContent = PIECE_UNICODE[cell.color + cell.piece] || '';
+        sq.appendChild(span);
+      }
+
+      if (!isFinal) sq.addEventListener('click', () => handleSquareClick(r, c));
+      el.appendChild(sq);
+    }
+  }
+}
+
+// ── Piece click logic ────────────────────────────────────────────────────────
+
+function handleSquareClick(r, c) {
+  if (isObserver) return;
+  if (!gameBoard || gameTurn !== myColor) return;
+
+  const cell = gameBoard[r][c];
+
+  if (selectedSq) {
+    const [sr, sc] = selectedSq;
+
+    // Clicked a legal destination
+    if (legalDests.some(([lr, lc]) => lr === r && lc === c)) {
+      const piece = gameBoard[sr][sc];
+      // Check for pawn promotion
+      if (piece && piece.piece === 'P' && ((myColor === 'w' && r === 0) || (myColor === 'b' && r === 7))) {
+        askPromotion(myColor).then(promo => {
+          wsSend({ type: 'chess_move', from: [sr, sc], to: [r, c], promotion: promo });
+          selectedSq = null;
+          legalDests = [];
+        });
+        return;
+      }
+      wsSend({ type: 'chess_move', from: [sr, sc], to: [r, c] });
+      selectedSq = null;
+      legalDests = [];
+      return;
+    }
+
+    // Clicked own piece — reselect
+    if (cell && cell.color === myColor) {
+      selectedSq = [r, c];
+      legalDests = computeLegalDests(r, c);
+      renderBoard(document.getElementById('chess-board'), gameBoard, false);
+      return;
+    }
+
+    // Clicked elsewhere — deselect
+    selectedSq = null;
+    legalDests = [];
+    renderBoard(document.getElementById('chess-board'), gameBoard, false);
+    return;
+  }
+
+  // No selection yet
+  if (cell && cell.color === myColor) {
+    selectedSq = [r, c];
+    legalDests = computeLegalDests(r, c);
+    renderBoard(document.getElementById('chess-board'), gameBoard, false);
+  }
+}
+
+// Client-side legal move computation for UI highlighting
+// Uses same algorithm as server but simplified (no castling rights available — we trust server)
+function computeLegalDests(r, c) {
+  // We'll do a simplified client-side check using the same logic
+  // For simplicity, return all pseudo-legal moves that don't look obviously illegal
+  // The server will validate; we just need visual hints
+  return clientGetLegalDests(gameBoard, r, c, myColor);
+}
+
+function clientGetLegalDests(board, r, c, color) {
+  const cell = board[r][c];
+  if (!cell || cell.color !== color) return [];
+
+  const pseudo = clientPseudoMoves(board, r, c);
+  const dests = [];
+
+  for (const [tr, tc] of pseudo) {
+    // Apply move and check if own king is in check
+    const nb = clientApplyMove(board, r, c, tr, tc, color);
+    if (!clientIsInCheck(nb, color)) {
+      dests.push([tr, tc]);
+    }
+  }
+
+  // We can't easily know castling rights on client, so we skip castling hints
+  // The server handles actual legality
+
+  return dests;
+}
+
+function clientPseudoMoves(board, r, c) {
+  const cell = board[r][c];
+  if (!cell) return [];
+  const { piece, color } = cell;
+  const moves = [];
+  const enemy = color === 'w' ? 'b' : 'w';
+
+  function push(nr, nc) {
+    if (nr < 0 || nr > 7 || nc < 0 || nc > 7) return false;
+    const t = board[nr][nc];
+    if (t && t.color === color) return false;
+    moves.push([nr, nc]);
+    return !t;
+  }
+
+  function slide(dr, dc) {
+    let nr = r+dr, nc = c+dc;
+    while (nr>=0&&nr<8&&nc>=0&&nc<8) {
+      const t = board[nr][nc];
+      if (t && t.color === color) break;
+      moves.push([nr, nc]);
+      if (t) break;
+      nr+=dr; nc+=dc;
+    }
+  }
+
+  switch(piece) {
+    case 'P': {
+      const dir = color==='w'?-1:1, sr = color==='w'?6:1;
+      if (r+dir>=0&&r+dir<8&&!board[r+dir][c]) {
+        moves.push([r+dir,c]);
+        if (r===sr&&!board[r+2*dir][c]) moves.push([r+2*dir,c]);
+      }
+      for (const dc of [-1,1]) {
+        const nr=r+dir,nc=c+dc;
+        if(nr>=0&&nr<8&&nc>=0&&nc<8&&board[nr][nc]&&board[nr][nc].color===enemy) moves.push([nr,nc]);
+      }
+      break;
+    }
+    case 'N':
+      for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) push(r+dr,c+dc);
+      break;
+    case 'B':
+      for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) slide(dr,dc);
+      break;
+    case 'R':
+      for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]) slide(dr,dc);
+      break;
+    case 'Q':
+      for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]) slide(dr,dc);
+      break;
+    case 'K':
+      for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) push(r+dr,c+dc);
+      break;
+  }
+  return moves;
+}
+
+function clientApplyMove(board, fr, fc, tr, tc, color) {
+  const nb = board.map(row => row.map(cell => cell ? {...cell} : null));
+  const piece = nb[fr][fc];
+  // en passant (approximate — just remove the pawn if pawn moves diagonally to empty)
+  if (piece && piece.piece === 'P' && fc !== tc && !nb[tr][tc]) {
+    const capRow = color==='w' ? tr+1 : tr-1;
+    nb[capRow][tc] = null;
+  }
+  nb[tr][tc] = piece ? {...piece} : null;
+  nb[fr][fc] = null;
+  return nb;
+}
+
+function clientIsInCheck(board, color) {
+  let kr=-1,kc=-1;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    const cell=board[r][c];
+    if(cell&&cell.piece==='K'&&cell.color===color){kr=r;kc=c;}
+  }
+  if(kr===-1) return true;
+  const enemy=color==='w'?'b':'w';
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+    const cell=board[r][c];
+    if(!cell||cell.color!==enemy) continue;
+    const mvs=clientPseudoMoves(board,r,c);
+    if(mvs.some(([mr,mc])=>mr===kr&&mc===kc)) return true;
+  }
+  return false;
+}
+
+// ── Promotion modal ──────────────────────────────────────────────────────────
+
+function askPromotion(color) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('promo-modal');
+    const container = document.getElementById('promo-pieces');
+    container.innerHTML = '';
+
+    const pieces = [
+      { p: 'q', label: PIECE_UNICODE[color+'Q'] },
+      { p: 'r', label: PIECE_UNICODE[color+'R'] },
+      { p: 'b', label: PIECE_UNICODE[color+'B'] },
+      { p: 'n', label: PIECE_UNICODE[color+'N'] },
+    ];
+
+    pieces.forEach(({p, label}) => {
+      const btn = document.createElement('button');
+      btn.className = 'promo-btn';
+      btn.textContent = label;
+      btn.onclick = () => {
+        modal.classList.remove('show');
+        resolve(p);
+      };
+      container.appendChild(btn);
+    });
+
+    modal.classList.add('show');
+  });
+}
+
+// ── Header / status update ───────────────────────────────────────────────────
+
+function updateHeader() {
+  const ti = document.getElementById('turn-indicator');
+  if (!gameTurn) { ti.textContent = ''; return; }
+
+  if (inCheckColor) {
+    const who = inCheckColor === 'w' ? 'White' : 'Black';
+    ti.textContent = `${who} is in check`;
+    ti.classList.add('check');
+  } else {
+    const who = gameTurn === 'w' ? 'White' : 'Black';
+    ti.textContent = `${who} to move`;
+    ti.classList.remove('check');
+  }
+}
+
+// ── Move history rendering ───────────────────────────────────────────────────
+
+function renderMoveHistory() {
+  const el = document.getElementById('move-history');
+  el.innerHTML = '';
+  for (let i = 0; i < moveHistory.length; i += 2) {
+    const div = document.createElement('div');
+    div.className = 'move-pair';
+    const num = document.createElement('span');
+    num.className = 'move-num';
+    num.textContent = `${Math.floor(i/2)+1}.`;
+    const mw = document.createElement('span');
+    mw.className = 'move-w';
+    mw.textContent = moveHistory[i];
+    div.appendChild(num);
+    div.appendChild(mw);
+    if (moveHistory[i+1]) {
+      const mb = document.createElement('span');
+      mb.className = 'move-b';
+      mb.textContent = moveHistory[i+1];
+      div.appendChild(mb);
+    }
+    el.appendChild(div);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Game over screen ─────────────────────────────────────────────────────────
+
+function showGameOver(result, reason, board) {
+  const resultText = result === 'draw' ? 'Draw!' :
+                     result === 'w'    ? 'White Wins!' : 'Black Wins!';
+  const reasonText = reason === 'checkmate'  ? 'Checkmate' :
+                     reason === 'stalemate'  ? 'Stalemate' :
+                     reason === 'resignation'? 'Resignation' : reason || '';
+
+  document.getElementById('over-result').textContent = resultText;
+  document.getElementById('over-reason').textContent = reasonText;
+  document.getElementById('play-again-btn').textContent = 'Play Again';
+
+  // Render final board
+  const fb = document.getElementById('final-board');
+  const sqSize = Math.min(48, Math.floor(window.innerWidth * 0.9 / 8));
+  fb.style.setProperty('--sq', sqSize + 'px');
+  fb.className = '';
+  fb.id = 'final-board';
+  fb.style.display = 'grid';
+  fb.style.gridTemplateColumns = `repeat(8, ${sqSize}px)`;
+  fb.style.gridTemplateRows = `repeat(8, ${sqSize}px)`;
+  fb.style.border = '2px solid #2a2a5a';
+  fb.style.fontSize = (sqSize * 0.72) + 'px';
+
+  fb.innerHTML = '';
+  const flipped = myColor === 'b';
+  const rows = flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  const cols = flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  for (const r of rows) {
+    for (const c of cols) {
+      const sq = document.createElement('div');
+      sq.className = 'sq';
+      sq.style.width = sqSize + 'px';
+      sq.style.height = sqSize + 'px';
+      sq.style.display = 'flex';
+      sq.style.alignItems = 'center';
+      sq.style.justifyContent = 'center';
+      sq.style.background = (r + c) % 2 === 0 ? '#f0d9b5' : '#b58863';
+      sq.style.lineHeight = '1';
+      const cell = board[r][c];
+      if (cell) {
+        const span = document.createElement('span');
+        span.className = `piece-${cell.color}`;
+        span.textContent = PIECE_UNICODE[cell.color + cell.piece] || '';
+        sq.appendChild(span);
+      }
+      fb.appendChild(sq);
+    }
+  }
+
+  // Observer: hide play-again
+  if (isObserver) {
+    document.getElementById('play-again-btn').style.display = 'none';
+  } else {
+    document.getElementById('play-again-btn').style.display = '';
+  }
+
+  showScreen('screen-over');
+}
+
+// ── Observe list ─────────────────────────────────────────────────────────────
+
+function renderObserveList(sessions) {
+  const el = document.getElementById('obs-list');
+  if (!sessions || sessions.length === 0) {
+    el.innerHTML = '<div class="obs-empty">No active games right now.</div>';
+    return;
+  }
+  el.innerHTML = '';
+  sessions.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'obs-row';
+    const names = document.createElement('div');
+    names.className = 'obs-names';
+    names.innerHTML = `&#9812; ${esc(s.wName)} <em>vs</em> &#9818; ${esc(s.bName)} <em>(${s.moves} moves)</em>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn-outline';
+    btn.style.padding = '6px 14px';
+    btn.style.fontSize = '0.78rem';
+    btn.textContent = 'Observe';
+    btn.onclick = () => {
+      isObserver = true;
+      wsSend({ type: 'chess_observe', sessionId: s.id });
+    };
+    row.appendChild(names);
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+function appendChat(name, text) {
+  const el = document.getElementById('chat-messages');
+  const line = document.createElement('div');
+  line.className = 'chat-line';
+  line.innerHTML = `<strong>${esc(name)}:</strong> ${esc(text)}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  wsSend({ type: 'chess_chat', text });
+  input.value = '';
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Event bindings ───────────────────────────────────────────────────────────
+
+document.getElementById('btn-find').onclick = () => {
+  connectWS();
+  ws.onopen = () => wsSend({ type: 'chess_join', name: window.hubName || 'Anonymous' });
+  if (ws.readyState === 1) wsSend({ type: 'chess_join', name: window.hubName || 'Anonymous' });
+};
+
+document.getElementById('btn-watch').onclick = () => {
+  connectWS();
+  ws.onopen = () => { wsSend({ type: 'chess_sessions' }); showScreen('screen-observe-list'); };
+  if (ws.readyState === 1) { wsSend({ type: 'chess_sessions' }); showScreen('screen-observe-list'); }
+};
+
+document.getElementById('obs-refresh-btn').onclick = () => { wsSend({ type: 'chess_sessions' }); };
+document.getElementById('obs-back-btn').onclick = () => { showScreen('screen-menu'); };
+
+document.getElementById('resign-btn').onclick = () => {
+  if (confirm('Are you sure you want to resign?')) wsSend({ type: 'chess_resign' });
+};
+
+document.getElementById('play-again-btn').onclick = () => { wsSend({ type: 'chess_rematch' }); };
+document.getElementById('back-to-hub-btn').onclick = () => { window.location.href = '/'; };
+
+document.getElementById('chat-send').onclick = sendChat;
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+// ── Name overlay + presence ──────────────────────────────────────────────────
+
+let _presenceWs = null;
+function connectPresence(name) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  _presenceWs = new WebSocket(`${proto}://${location.host}/ws/presence`);
+  _presenceWs.onopen = () => _presenceWs.send(JSON.stringify({ type: 'presence_join', name, page: 'chess' }));
+}
+
+(function() {
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+  }
+
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    window.hubName = saved;
+    connectPresence(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+</script>
+</body>
+</html>

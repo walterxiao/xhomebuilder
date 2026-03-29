@@ -258,6 +258,14 @@
       <div class="game-meta">2–6 players &nbsp;·&nbsp; drawing &amp; guessing</div>
       <div class="game-players" id="players-pictionary"></div>
     </a>
+
+    <a href="/chess" class="game-card">
+      <div class="game-icon">&#9822;</div>
+      <div class="game-title">Chess</div>
+      <div class="game-desc">Classic chess with full rules — castling, en passant, promotion, check &amp; checkmate.</div>
+      <div class="game-meta">2 players &nbsp;·&nbsp; observers welcome</div>
+      <div class="game-players" id="players-chess"></div>
+    </a>
   </div>
 
   <div id="name-editor">
@@ -277,6 +285,7 @@ const PAGE_LABELS = {
   airplane:   'Airplane Chess',
   battleship: 'Battleship',
   pictionary: 'Pictionary',
+  chess:      'Chess',
   lobby:      'Lobby',
 };
 
@@ -297,7 +306,7 @@ window.onPresenceUpdate = function(users) {
   });
 
   // Update per-game player lists on cards
-  ['connect5', 'airplane', 'battleship', 'pictionary'].forEach(page => {
+  ['connect5', 'airplane', 'battleship', 'pictionary', 'chess'].forEach(page => {
     const el = document.getElementById(`players-${page}`);
     if (!el) return;
     const names = groups[page] || [];
@@ -306,7 +315,7 @@ window.onPresenceUpdate = function(users) {
 
   // Render online rows for all sections including lobby
   const rowsEl = document.getElementById('online-rows');
-  const allPages = ['lobby', 'connect5', 'airplane', 'battleship', 'pictionary'];
+  const allPages = ['lobby', 'connect5', 'airplane', 'battleship', 'pictionary', 'chess'];
   let html = '';
   allPages.forEach(page => {
     if (groups[page] && groups[page].length > 0) {

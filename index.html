@@ -89,9 +89,140 @@
       color: #444466;
       letter-spacing: 1px;
     }
+
+    .game-players {
+      margin-top: 8px;
+      font-size: 0.75rem;
+      color: #6060a0;
+      min-height: 1em;
+    }
+
+    /* ── Online panel ── */
+    #online-panel {
+      margin-top: 40px;
+      text-align: center;
+    }
+
+    #online-count {
+      font-size: 0.78rem;
+      letter-spacing: 2px;
+      color: #444466;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    #online-count span {
+      color: #6060a0;
+    }
+
+    .online-row {
+      font-size: 0.78rem;
+      color: #555577;
+      margin-bottom: 3px;
+    }
+
+    .online-row .ol-label {
+      color: #444466;
+      letter-spacing: 1px;
+    }
+
+    .online-row .ol-name {
+      color: #7070a0;
+    }
+
+    /* ── Name editor ── */
+    #name-editor {
+      margin-top: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    #name-editor label {
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      color: #444466;
+      text-transform: uppercase;
+    }
+
+    #name-editor-input {
+      background: #0f0f22;
+      border: 1px solid #2a2a5a;
+      border-radius: 4px;
+      color: #e0d5c1;
+      padding: 5px 10px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      outline: none;
+      width: 160px;
+    }
+
+    #name-editor-input:focus { border-color: #d4af37; }
+
+    #name-saved-hint {
+      font-size: 0.7rem;
+      color: #3a7a3a;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    /* ── Name overlay ── */
+    #name-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .nov-card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 40px 36px;
+      text-align: center;
+      width: 320px;
+    }
+
+    .nov-title {
+      font-size: 1.1rem; letter-spacing: 4px; color: #d4af37;
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+
+    .nov-sub {
+      font-size: 0.78rem; color: #555577; letter-spacing: 2px; margin-bottom: 20px;
+    }
+
+    #name-overlay input {
+      width: 100%; background: #0f0f22; border: 1px solid #2a2a5a;
+      border-radius: 4px; color: #e0d5c1; padding: 8px 12px;
+      font-size: 0.95rem; font-family: inherit; outline: none;
+      box-sizing: border-box; margin-bottom: 10px;
+    }
+
+    #name-overlay input:focus { border-color: #d4af37; }
+
+    #name-overlay button {
+      width: 100%; background: #16213e; border: 1px solid #2a2a5a;
+      border-radius: 4px; color: #d4af37; padding: 10px;
+      font-size: 0.9rem; font-family: inherit; cursor: pointer; letter-spacing: 1px;
+    }
+
+    #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
   </style>
 </head>
 <body>
+
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Welcome</div>
+    <div class="nov-sub">Choose your name to play</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
   <h1>Game Hub</h1>
   <p class="subtitle">Choose a game</p>
 
@@ -101,6 +232,7 @@
       <div class="game-title">Connect&#8209;5</div>
       <div class="game-desc">Place pieces on a 15×15 board. First to get 5 in a row wins.</div>
       <div class="game-meta">2 players &nbsp;·&nbsp; observers welcome</div>
+      <div class="game-players" id="players-connect5"></div>
     </a>
 
     <a href="/airplane" class="game-card">
@@ -108,6 +240,7 @@
       <div class="game-title">Airplane Chess</div>
       <div class="game-desc">Roll dice, race your 4 pieces around the board, and reach the center first.</div>
       <div class="game-meta">2–4 players &nbsp;·&nbsp; observers welcome</div>
+      <div class="game-players" id="players-airplane"></div>
     </a>
 
     <a href="/battleship" class="game-card">
@@ -115,7 +248,129 @@
       <div class="game-title">Battleship</div>
       <div class="game-desc">Place your fleet, then hunt and sink your opponent's ships before they sink yours.</div>
       <div class="game-meta">2 players &nbsp;·&nbsp; classic naval combat</div>
+      <div class="game-players" id="players-battleship"></div>
     </a>
   </div>
+
+  <div id="name-editor">
+    <label for="name-editor-input">Your name</label>
+    <input id="name-editor-input" type="text" maxlength="24" autocomplete="off" placeholder="—">
+    <span id="name-saved-hint">saved</span>
+  </div>
+
+  <div id="online-panel">
+    <div id="online-count"><span>0</span> online</div>
+    <div id="online-rows"></div>
+  </div>
+
+<script>
+const PAGE_LABELS = {
+  connect5:   'Connect-5',
+  airplane:   'Airplane Chess',
+  battleship: 'Battleship',
+  lobby:      'Lobby',
+};
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+window.onPresenceUpdate = function(users) {
+  // Update total count
+  document.querySelector('#online-count span').textContent = users.length;
+
+  // Group by page
+  const groups = {};
+  users.forEach(u => {
+    const p = u.page || 'lobby';
+    if (!groups[p]) groups[p] = [];
+    groups[p].push(u.name);
+  });
+
+  // Update per-game player lists on cards
+  ['connect5', 'airplane', 'battleship'].forEach(page => {
+    const el = document.getElementById(`players-${page}`);
+    if (!el) return;
+    const names = groups[page] || [];
+    el.textContent = names.length ? names.join(', ') : '';
+  });
+
+  // Render online rows for all sections including lobby
+  const rowsEl = document.getElementById('online-rows');
+  const allPages = ['lobby', 'connect5', 'airplane', 'battleship'];
+  let html = '';
+  allPages.forEach(page => {
+    if (groups[page] && groups[page].length > 0) {
+      const names = groups[page].map(n => `<span class="ol-name">${esc(n)}</span>`).join(', ');
+      html += `<div class="online-row"><span class="ol-label">${PAGE_LABELS[page]}:</span> ${names}</div>`;
+    }
+  });
+  rowsEl.innerHTML = html;
+};
+
+// ── Name overlay + Presence ───────────────────────────────────────────────────
+const HUB_PAGE = 'lobby';
+let _presenceWs = null;
+
+function connectPresence(name) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  _presenceWs = new WebSocket(`${proto}://${location.host}/ws/presence`);
+  _presenceWs.onopen = () => _presenceWs.send(JSON.stringify({ type: 'presence_join', name, page: HUB_PAGE }));
+  _presenceWs.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'presence_update' && typeof window.onPresenceUpdate === 'function') {
+        window.onPresenceUpdate(msg.users);
+      }
+    } catch {}
+  };
+}
+
+// Name editor — saves and updates presence on each change
+const nameEditorInput = document.getElementById('name-editor-input');
+const nameSavedHint = document.getElementById('name-saved-hint');
+let nameSaveTimer = null;
+
+nameEditorInput.addEventListener('input', () => {
+  const val = nameEditorInput.value.trim();
+  if (!val) return;
+  clearTimeout(nameSaveTimer);
+  nameSaveTimer = setTimeout(() => {
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    if (_presenceWs && _presenceWs.readyState === 1) {
+      _presenceWs.send(JSON.stringify({ type: 'presence_join', name: val, page: HUB_PAGE }));
+    }
+    nameSavedHint.style.opacity = '1';
+    setTimeout(() => { nameSavedHint.style.opacity = '0'; }, 1200);
+  }, 400);
+});
+
+(function() {
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    nameEditorInput.value = val;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+  }
+
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    document.getElementById('nov-input').value = saved;
+    nameEditorInput.value = saved;
+    window.hubName = saved;
+    connectPresence(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+</script>
 </body>
 </html>

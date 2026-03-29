@@ -5,6 +5,7 @@ const path = require('path');
 const connect5 = require('./games/connect5');
 const airplane = require('./games/airplane');
 const battleship = require('./games/battleship');
+const presence = require('./games/presence');
 
 const PORT = process.env.PORT || 3000;
 
@@ -38,6 +39,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/battleship') {
     battleship.wss.handleUpgrade(req, socket, head, ws => {
       battleship.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/presence') {
+    presence.wss.handleUpgrade(req, socket, head, ws => {
+      presence.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

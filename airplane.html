@@ -323,9 +323,41 @@
       border: 1px solid #2a2a5a; padding: 2px 8px; border-radius: 3px;
     }
     #observer-count { font-size: 0.76rem; color: #444466; letter-spacing: 1px; }
+
+    /* ── Name overlay ── */
+    #name-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+      z-index: 9999; display: flex; align-items: center; justify-content: center;
+    }
+    .nov-card {
+      background: #16213e; border: 1px solid #2a2a5a; border-radius: 8px;
+      padding: 40px 36px; text-align: center; width: 320px;
+    }
+    .nov-title { font-size: 1.1rem; letter-spacing: 4px; color: #d4af37; text-transform: uppercase; margin-bottom: 6px; }
+    .nov-sub { font-size: 0.78rem; color: #555577; letter-spacing: 2px; margin-bottom: 20px; }
+    #name-overlay input {
+      width: 100%; background: #0f0f22; border: 1px solid #2a2a5a; border-radius: 4px;
+      color: #e0d5c1; padding: 8px 12px; font-size: 0.95rem; font-family: inherit;
+      outline: none; box-sizing: border-box; margin-bottom: 10px;
+    }
+    #name-overlay input:focus { border-color: #d4af37; }
+    #name-overlay button {
+      width: 100%; background: #16213e; border: 1px solid #2a2a5a; border-radius: 4px;
+      color: #d4af37; padding: 10px; font-size: 0.9rem; font-family: inherit;
+      cursor: pointer; letter-spacing: 1px;
+    }
+    #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
   </style>
 </head>
 <body>
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Welcome</div>
+    <div class="nov-sub">Choose your name to play</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
 
 <h1>Airplane Chess</h1>
 <p class="subtitle">飞行棋</p>
@@ -1200,6 +1232,38 @@ function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+// ── Name overlay + Presence ───────────────────────────────────────────────────
+window.onNameSet = name => { document.getElementById('name-input').value = name; };
+const HUB_PAGE = 'airplane';
+(function() {
+  function connectPresence(name) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const pw = new WebSocket(`${proto}://${location.host}/ws/presence`);
+    pw.onopen = () => pw.send(JSON.stringify({ type: 'presence_join', name, page: HUB_PAGE }));
+  }
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+    if (typeof window.onNameSet === 'function') window.onNameSet(val);
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    document.getElementById('nov-input').value = saved;
+    window.hubName = saved;
+    connectPresence(saved);
+    window.onNameSet(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
 </script>
 </body>
 </html>

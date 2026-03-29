@@ -358,9 +358,60 @@
       pointer-events: none;
       z-index: 999;
     }
+
+    /* ── Observer screens ── */
+    #screen-observe-list { justify-content: center; min-height: 100vh; }
+    .observe-session-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; background: #0e1628; border: 1px solid var(--border);
+      border-radius: 6px; margin-bottom: 8px; gap: 12px;
+    }
+    .observe-session-info { font-size: 0.85rem; color: var(--text); }
+    .observe-session-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .no-sessions-msg { color: var(--muted); font-size: 0.82rem; text-align: center; padding: 16px 0; }
+
+    #screen-observe { gap: 16px; }
+    .obs-banner {
+      font-size: 0.72rem; letter-spacing: 2px; color: var(--muted);
+      text-transform: uppercase; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 14px;
+    }
+
+    /* ── Name overlay ── */
+    #name-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.88);
+      z-index: 9999; display: flex; align-items: center; justify-content: center;
+    }
+    .nov-card {
+      background: #16213e; border: 1px solid #2a2a5a; border-radius: 8px;
+      padding: 40px 36px; text-align: center; width: 320px;
+    }
+    .nov-title { font-size: 1.1rem; letter-spacing: 4px; color: #d4af37; text-transform: uppercase; margin-bottom: 6px; }
+    .nov-sub { font-size: 0.78rem; color: #555577; letter-spacing: 2px; margin-bottom: 20px; }
+    #name-overlay input {
+      width: 100%; background: #0f0f22; border: 1px solid #2a2a5a; border-radius: 4px;
+      color: #e0d5c1; padding: 8px 12px; font-size: 0.95rem; font-family: inherit;
+      outline: none; box-sizing: border-box; margin-bottom: 10px;
+    }
+    #name-overlay input:focus { border-color: #d4af37; }
+    #name-overlay button {
+      width: 100%; background: #16213e; border: 1px solid #2a2a5a; border-radius: 4px;
+      color: #d4af37; padding: 10px; font-size: 0.9rem; font-family: inherit;
+      cursor: pointer; letter-spacing: 1px;
+    }
+    #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
   </style>
 </head>
 <body>
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Welcome</div>
+    <div class="nov-sub">Choose your name to play</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
 
 <!-- LOBBY -->
 <div id="screen-lobby" class="screen active">
@@ -370,8 +421,51 @@
     <p class="subtitle">Naval Combat</p>
     <input id="name-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off" />
     <button id="find-btn" class="btn btn-primary" style="width:100%">Find Game</button>
+    <button id="watch-btn" class="btn btn-secondary" style="width:100%">Watch a Game</button>
     <a href="/" class="hub-link">&#8592; Back to Hub</a>
   </div>
+</div>
+
+<!-- OBSERVE LIST -->
+<div id="screen-observe-list" class="screen">
+  <div class="lobby-box" style="width:420px;gap:14px;">
+    <div class="lobby-icon">&#128065;</div>
+    <h1 class="game-title">Watch a Game</h1>
+    <div id="observe-sessions-container" style="width:100%;"></div>
+    <div style="display:flex;gap:10px;width:100%;">
+      <button id="refresh-observe-btn" class="btn btn-secondary" style="flex:1">Refresh</button>
+      <button id="observe-list-back-btn" class="btn btn-secondary" style="flex:1">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- OBSERVE -->
+<div id="screen-observe" class="screen">
+  <h1 class="game-title" style="margin-top:12px">Battleship</h1>
+  <div class="obs-banner">Observer</div>
+  <div id="observe-status-bar" class="status-bar">Watching&hellip;</div>
+  <div class="battle-layout">
+    <div class="grid-wrapper">
+      <div class="grid-title" id="obs-p0-title">Player 1</div>
+      <div class="grid-container" id="obs-p0-container">
+        <div class="grid-labels-top" id="obs-p0-col-labels"></div>
+        <div id="obs-p0-rows"></div>
+      </div>
+    </div>
+    <div class="grid-wrapper">
+      <div class="grid-title" id="obs-p1-title">Player 2</div>
+      <div class="grid-container" id="obs-p1-container">
+        <div class="grid-labels-top" id="obs-p1-col-labels"></div>
+        <div id="obs-p1-rows"></div>
+      </div>
+    </div>
+    <div class="chat-panel">
+      <div class="chat-title">Chat</div>
+      <div class="chat-messages" id="obs-chat-messages"></div>
+      <!-- No input — observers cannot chat -->
+    </div>
+  </div>
+  <a href="/" class="hub-link" style="margin-top:16px;">&#8592; Back to Hub</a>
 </div>
 
 <!-- WAITING -->
@@ -499,6 +593,18 @@ let animLock = false;     // true while cannonball animation is in flight
 let pendingResult = null; // bs_result msg received before ball landed
 let pendingWin = null;    // winner index if bs_win arrived during animation
 let onBallLanded = null;  // callback set when ball lands before result arrives
+
+// ── Observer state ─────────────────────────────────────────────────────────────
+let isObserver = false;
+let obsPlayerNames = ['', ''];
+let obsGridCells = [[], []];
+let obsShips = [null, null];
+let obsHits = [new Set(), new Set()];
+let obsMisses = [new Set(), new Set()];
+let obsSunkCells = [new Set(), new Set()];
+let obsSunkShips = [new Set(), new Set()];
+let obsCurrentTurn = 0;
+let obsPhase = 'placement';
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
 const ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -1150,11 +1256,14 @@ function onMessage(evt) {
       break;
 
     case 'bs_result':
-      handleResult(msg);
+      if (isObserver) handleObserverResult(msg);
+      else handleResult(msg);
       break;
 
     case 'bs_win':
-      if (animLock) {
+      if (isObserver) {
+        handleObserverWin(msg.winner);
+      } else if (animLock) {
         pendingWin = msg.winner;
       } else {
         handleWin(msg.winner);
@@ -1162,21 +1271,39 @@ function onMessage(evt) {
       break;
 
     case 'bs_rematch_vote':
-      document.getElementById('rematch-votes').textContent =
-        `Rematch votes: ${msg.votes}/2`;
+      if (!isObserver)
+        document.getElementById('rematch-votes').textContent = `Rematch votes: ${msg.votes}/2`;
       break;
 
     case 'bs_rematch_start':
-      handleRematchStart();
+      if (!isObserver) handleRematchStart();
       break;
 
     case 'bs_chat':
-      addChatMessage(msg.name, msg.text);
+      if (isObserver) addObsChatMessage(msg.name, msg.text);
+      else addChatMessage(msg.name, msg.text);
       break;
 
     case 'bs_opponent_disconnected':
-      alert(`${opponentName} disconnected. Game over.`);
-      location.href = '/';
+      if (isObserver) {
+        addObsChatMessage('', 'A player disconnected — game ended.', true);
+        document.getElementById('observe-status-bar').textContent = 'Game ended — player disconnected';
+      } else {
+        alert(`${opponentName} disconnected. Game over.`);
+        location.href = '/';
+      }
+      break;
+
+    case 'bs_sessions_list':
+      renderObserveSessions(msg.sessions);
+      break;
+
+    case 'bs_observe_start':
+      handleObserveStart(msg);
+      break;
+
+    case 'bs_observe_battle_start':
+      handleObserveBattleStart(msg);
       break;
 
     case 'bs_error':
@@ -1351,6 +1478,217 @@ function handleRematchStart() {
   startPlacement();
 }
 
+// ── Observer functions ─────────────────────────────────────────────────────────
+
+function renderObserveSessions(list) {
+  const container = document.getElementById('observe-sessions-container');
+  if (!list || list.length === 0) {
+    container.innerHTML = '<div class="no-sessions-msg">No active games right now. Check back soon!</div>';
+    return;
+  }
+  container.innerHTML = '';
+  list.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'observe-session-item';
+    div.innerHTML = `
+      <div>
+        <div class="observe-session-info">${escHtml(s.playerNames[0])} vs ${escHtml(s.playerNames[1])}</div>
+        <div class="observe-session-meta">${s.phase} &nbsp;·&nbsp; ${s.observerCount} watching</div>
+      </div>
+      <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.78rem;">Watch</button>
+    `;
+    div.querySelector('button').addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'bs_observe', sessionId: s.id }));
+    });
+    container.appendChild(div);
+  });
+}
+
+function handleObserveStart(msg) {
+  isObserver = true;
+  obsPlayerNames = msg.playerNames;
+  obsPhase = msg.phase;
+  obsCurrentTurn = msg.currentTurn;
+
+  obsHits = [new Set(), new Set()];
+  obsMisses = [new Set(), new Set()];
+  obsSunkCells = [new Set(), new Set()];
+  obsSunkShips = [new Set(), new Set()];
+  obsShips = [msg.grids[0].ships, msg.grids[1].ships];
+
+  document.getElementById('obs-p0-title').textContent = obsPlayerNames[0];
+  document.getElementById('obs-p1-title').textContent = obsPlayerNames[1];
+  document.getElementById('obs-chat-messages').innerHTML = '';
+
+  buildObserveGrids();
+
+  msg.grids.forEach((g, i) => {
+    g.hits.forEach(k => obsHits[i].add(k));
+    g.misses.forEach(k => obsMisses[i].add(k));
+    if (g.sunkShips) {
+      for (const [shipId, cells] of Object.entries(g.sunkShips)) {
+        cells.forEach(([r, c]) => {
+          const k = `${r},${c}`;
+          obsSunkCells[i].add(k);
+          obsHits[i].add(k);
+        });
+        obsSunkShips[i].add(shipId);
+      }
+    }
+  });
+
+  updateObserveStatus();
+  renderObserveGrid(0);
+  renderObserveGrid(1);
+  showScreen('screen-observe');
+}
+
+function handleObserveBattleStart(msg) {
+  obsPhase = 'battle';
+  obsPlayerNames = msg.playerNames;
+  obsCurrentTurn = msg.currentTurn;
+  obsHits = [new Set(), new Set()];
+  obsMisses = [new Set(), new Set()];
+  obsSunkCells = [new Set(), new Set()];
+  obsSunkShips = [new Set(), new Set()];
+  obsShips = [msg.grids[0].ships, msg.grids[1].ships];
+
+  document.getElementById('obs-p0-title').textContent = obsPlayerNames[0];
+  document.getElementById('obs-p1-title').textContent = obsPlayerNames[1];
+
+  buildObserveGrids();
+  updateObserveStatus();
+  renderObserveGrid(0);
+  renderObserveGrid(1);
+}
+
+function buildObserveGrids() {
+  obsGridCells[0] = buildGridDOM(
+    document.getElementById('obs-p0-rows'),
+    document.getElementById('obs-p0-col-labels'),
+    '', null, null
+  );
+  obsGridCells[1] = buildGridDOM(
+    document.getElementById('obs-p1-rows'),
+    document.getElementById('obs-p1-col-labels'),
+    '', null, null
+  );
+}
+
+function renderObserveGrid(pIdx) {
+  const cells = obsGridCells[pIdx];
+  const ships = obsShips[pIdx];
+  const hits = obsHits[pIdx];
+  const misses = obsMisses[pIdx];
+  const sunkCells = obsSunkCells[pIdx];
+
+  cells.forEach(cell => { cell.className = 'cell'; });
+
+  // Draw ship outlines
+  if (ships) {
+    for (const shipDef of ships) {
+      const fleet = FLEET.find(f => f.id === shipDef.id);
+      if (!fleet) continue;
+      const shipCellList = [];
+      for (let i = 0; i < fleet.size; i++) {
+        const r = shipDef.dir === 'v' ? shipDef.row + i : shipDef.row;
+        const c = shipDef.dir === 'h' ? shipDef.col + i : shipDef.col;
+        shipCellList.push([r, c]);
+      }
+      shipCellList.forEach(([r, c], idx) => {
+        const cell = getCell(cells, r, c);
+        cell.classList.add('ship');
+        if (shipDef.dir === 'h') {
+          if (idx === 0)                          cell.classList.add('ship-border-left', 'ship-border-top', 'ship-border-bottom');
+          if (idx === shipCellList.length - 1)    cell.classList.add('ship-border-right', 'ship-border-top', 'ship-border-bottom');
+          if (idx > 0 && idx < shipCellList.length - 1) cell.classList.add('ship-border-top', 'ship-border-bottom');
+        } else {
+          if (idx === 0)                          cell.classList.add('ship-border-top', 'ship-border-left', 'ship-border-right');
+          if (idx === shipCellList.length - 1)    cell.classList.add('ship-border-bottom', 'ship-border-left', 'ship-border-right');
+          if (idx > 0 && idx < shipCellList.length - 1) cell.classList.add('ship-border-left', 'ship-border-right');
+        }
+      });
+    }
+  }
+
+  misses.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    getCell(cells, r, c).classList.add('miss');
+  });
+
+  hits.forEach(key => {
+    if (sunkCells.has(key)) return;
+    const [r, c] = key.split(',').map(Number);
+    const cell = getCell(cells, r, c);
+    cell.classList.remove('ship');
+    cell.classList.add('hit');
+  });
+
+  sunkCells.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    const cell = getCell(cells, r, c);
+    cell.classList.remove('ship');
+    cell.classList.add('sunk', 'fired');
+  });
+}
+
+function handleObserverResult(msg) {
+  const { row, col, hit, sunk, shipCells, currentTurn, shooter } = msg;
+  obsCurrentTurn = currentTurn;
+  const targetIdx = 1 - shooter;
+  const key = `${row},${col}`;
+
+  if (sunk) {
+    shipCells.forEach(([r, c]) => {
+      const k = `${r},${c}`;
+      obsSunkCells[targetIdx].add(k);
+      obsHits[targetIdx].add(k);
+    });
+    obsSunkShips[targetIdx].add(sunk);
+    addObsChatMessage('', `${obsPlayerNames[shooter]} sunk ${obsPlayerNames[targetIdx]}'s ${sunk}!`, true);
+  } else if (hit) {
+    obsHits[targetIdx].add(key);
+    addObsChatMessage('', `${obsPlayerNames[shooter]} scored a hit!`, true);
+  } else {
+    obsMisses[targetIdx].add(key);
+    addObsChatMessage('', `${obsPlayerNames[shooter]} missed.`, true);
+  }
+
+  renderObserveGrid(targetIdx);
+  updateObserveStatus();
+}
+
+function handleObserverWin(winnerIdx) {
+  obsPhase = 'over';
+  const winnerName = obsPlayerNames[winnerIdx];
+  document.getElementById('observe-status-bar').textContent = `Game Over — ${winnerName} wins!`;
+  addObsChatMessage('', `${winnerName} wins the game!`, true);
+}
+
+function updateObserveStatus() {
+  const bar = document.getElementById('observe-status-bar');
+  if (obsPhase === 'placement') {
+    bar.textContent = 'Players are placing their fleets\u2026';
+    bar.classList.remove('my-turn');
+  } else if (obsPhase === 'battle') {
+    bar.innerHTML = `${escHtml(obsPlayerNames[obsCurrentTurn])}'s turn`;
+    bar.classList.remove('my-turn');
+  }
+}
+
+function addObsChatMessage(name, text, system = false) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg' + (system ? ' system' : '');
+  if (system || !name) {
+    div.textContent = text;
+  } else {
+    div.innerHTML = `<span class="chat-name">${escHtml(name)}</span>: ${escHtml(text)}`;
+  }
+  const msgs = document.getElementById('obs-chat-messages');
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 // ── UI Event Listeners ─────────────────────────────────────────────────────────
 document.getElementById('find-btn').addEventListener('click', () => {
   const name = document.getElementById('name-input').value.trim();
@@ -1360,6 +1698,23 @@ document.getElementById('find-btn').addEventListener('click', () => {
   ws.addEventListener('open', () => {
     ws.send(JSON.stringify({ type: 'bs_join', name }));
   });
+});
+
+document.getElementById('watch-btn').addEventListener('click', () => {
+  connectWS();
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'bs_sessions' }));
+    showScreen('screen-observe-list');
+  });
+});
+
+document.getElementById('refresh-observe-btn').addEventListener('click', () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'bs_sessions' }));
+});
+
+document.getElementById('observe-list-back-btn').addEventListener('click', () => {
+  if (ws) { ws.close(); ws = null; }
+  showScreen('screen-lobby');
 });
 
 document.getElementById('name-input').addEventListener('keydown', e => {
@@ -1413,6 +1768,37 @@ function sendChat() {
   input.value = '';
 }
 
+// ── Name overlay + Presence ───────────────────────────────────────────────────
+window.onNameSet = name => { document.getElementById('name-input').value = name; };
+const HUB_PAGE = 'battleship';
+(function() {
+  function connectPresence(name) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const pw = new WebSocket(`${proto}://${location.host}/ws/presence`);
+    pw.onopen = () => pw.send(JSON.stringify({ type: 'presence_join', name, page: HUB_PAGE }));
+  }
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+    if (typeof window.onNameSet === 'function') window.onNameSet(val);
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    document.getElementById('nov-input').value = saved;
+    window.hubName = saved;
+    connectPresence(saved);
+    window.onNameSet(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
 </script>
 </body>
 </html>

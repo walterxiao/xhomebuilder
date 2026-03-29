@@ -17,17 +17,19 @@ const wss = new WebSocketServer({ noServer: true });
 
 wss.on('connection', (ws) => {
   ws.sessionId = null;
-  ws.playerIndex = null;
+  ws.playerIndex = null; // 0 | 1 for players, -1 for observers
   ws.playerName = null;
 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'bs_join')    handleJoin(ws, msg.name);
-    if (msg.type === 'bs_place')   handlePlace(ws, msg.ships);
-    if (msg.type === 'bs_fire')    handleFire(ws, msg.row, msg.col);
-    if (msg.type === 'bs_rematch') handleRematch(ws);
-    if (msg.type === 'bs_chat')    handleChat(ws, msg.text);
+    if (msg.type === 'bs_join')     handleJoin(ws, msg.name);
+    if (msg.type === 'bs_place')    handlePlace(ws, msg.ships);
+    if (msg.type === 'bs_fire')     handleFire(ws, msg.row, msg.col);
+    if (msg.type === 'bs_rematch')  handleRematch(ws);
+    if (msg.type === 'bs_chat')     handleChat(ws, msg.text);
+    if (msg.type === 'bs_sessions') handleSessionsList(ws);
+    if (msg.type === 'bs_observe')  handleObserve(ws, msg.sessionId);
   });
 
   ws.on('close', () => handleDisconnect(ws));
@@ -42,10 +44,20 @@ function sendBoth(session, obj) {
   session.players.forEach(p => send(p.ws, obj));
 }
 
+function sendObservers(session, obj) {
+  session.observers.forEach(o => send(o.ws, obj));
+}
+
+// Send to players + observers
+function sendAll(session, obj) {
+  sendBoth(session, obj);
+  sendObservers(session, obj);
+}
+
 // ── Join / Matchmaking ────────────────────────────────────────────────────────
 
 function handleJoin(ws, name) {
-  if (ws.sessionId !== null) return; // already in a game
+  if (ws.sessionId !== null) return;
   if (!name || typeof name !== 'string') return send(ws, { type: 'bs_error', message: 'Invalid name.' });
   const cleanName = name.trim().slice(0, 24);
   if (!cleanName) return send(ws, { type: 'bs_error', message: 'Please enter a name.' });
@@ -79,6 +91,7 @@ function createSession(ws0, name0, ws1, name1) {
       { ws: ws0, name: name0, ships: null, grid: makeGrid(), fired: new Set() },
       { ws: ws1, name: name1, ships: null, grid: makeGrid(), fired: new Set() },
     ],
+    observers: [],
     phase: 'placement',
     currentTurn: 0,
     rematchVotes: new Set(),
@@ -87,6 +100,77 @@ function createSession(ws0, name0, ws1, name1) {
 
 function makeGrid() {
   return Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
+}
+
+// ── Observer / Sessions List ──────────────────────────────────────────────────
+
+function handleSessionsList(ws) {
+  const list = [];
+  for (const [id, s] of sessions) {
+    if (s.phase === 'over') continue;
+    list.push({
+      id,
+      playerNames: s.players.map(p => p.name),
+      phase: s.phase,
+      observerCount: s.observers.length,
+    });
+  }
+  send(ws, { type: 'bs_sessions_list', sessions: list });
+}
+
+function handleObserve(ws, sessionId) {
+  if (ws.sessionId !== null) return;
+  const session = sessions.get(sessionId);
+  if (!session) return send(ws, { type: 'bs_error', message: 'Game not found.' });
+  if (session.phase === 'over') return send(ws, { type: 'bs_error', message: 'Game has ended.' });
+
+  session.observers.push({ ws });
+  ws.sessionId = sessionId;
+  ws.playerIndex = -1;
+
+  send(ws, {
+    type: 'bs_observe_start',
+    phase: session.phase,
+    playerNames: session.players.map(p => p.name),
+    currentTurn: session.currentTurn,
+    grids: buildObserveGridState(session),
+  });
+}
+
+function buildObserveGridState(session) {
+  return session.players.map((p, pIdx) => {
+    if (p.ships === null) return { ships: null, hits: [], misses: [], sunkShips: {} };
+
+    const opponentFired = session.players[1 - pIdx].fired;
+    const hits = [];
+    const misses = [];
+    const sunkShips = {};
+
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const cell = p.grid[r][c];
+        if (cell && cell.endsWith(':hit')) {
+          hits.push(`${r},${c}`);
+          const shipId = cell.replace(':hit', '');
+          if (!sunkShips[shipId]) sunkShips[shipId] = [];
+          sunkShips[shipId].push([r, c]);
+        }
+      }
+    }
+
+    // Only keep fully sunk ships
+    for (const shipId of Object.keys(sunkShips)) {
+      const fleet = FLEET.find(f => f.id === shipId);
+      if (!fleet || sunkShips[shipId].length !== fleet.size) delete sunkShips[shipId];
+    }
+
+    for (const key of opponentFired) {
+      const [r, c] = key.split(',').map(Number);
+      if (p.grid[r][c] === null) misses.push(key);
+    }
+
+    return { ships: p.ships, hits, misses, sunkShips };
+  });
 }
 
 // ── Placement ─────────────────────────────────────────────────────────────────
@@ -105,7 +189,6 @@ function handlePlace(ws, ships) {
     return send(ws, { type: 'bs_error', message: 'Must place all 5 ships.' });
   }
 
-  // Validate and build grid
   const grid = makeGrid();
   const providedIds = ships.map(s => s.id);
   const requiredIds = FLEET.map(f => f.id);
@@ -145,9 +228,15 @@ function handlePlace(ws, ships) {
   sendBoth(session, { type: 'bs_placed', playerIndex: idx });
 
   if (session.players[opponentIdx].ships !== null) {
-    // Both placed — start battle
     session.phase = 'battle';
     sendBoth(session, { type: 'bs_battle_start' });
+    // Give observers the full grid state now that both players have placed
+    sendObservers(session, {
+      type: 'bs_observe_battle_start',
+      playerNames: session.players.map(p => p.name),
+      currentTurn: session.currentTurn,
+      grids: buildObserveGridState(session),
+    });
   }
 }
 
@@ -193,7 +282,6 @@ function handleFire(ws, row, col) {
   if (hit) {
     opponentPlayer.grid[row][col] = `${targetCell}:hit`;
 
-    // Check if the ship is fully sunk
     const fleet = FLEET.find(f => f.id === targetCell);
     if (fleet) {
       const cells = getShipCellsFromGrid(opponentPlayer.grid, targetCell);
@@ -205,7 +293,6 @@ function handleFire(ws, row, col) {
     }
   }
 
-  // Check win: all ships sunk
   let winner = null;
   if (sunk) {
     const allSunk = FLEET.every(f => {
@@ -218,10 +305,10 @@ function handleFire(ws, row, col) {
   if (winner !== null) {
     session.phase = 'over';
   } else {
-    if (!hit) session.currentTurn = opponentIdx; // miss = switch turns; hit = keep turn
+    if (!hit) session.currentTurn = opponentIdx;
   }
 
-  sendBoth(session, {
+  sendAll(session, {
     type: 'bs_result',
     row,
     col,
@@ -230,11 +317,12 @@ function handleFire(ws, row, col) {
     shipId: targetCell,
     shipCells,
     currentTurn: session.currentTurn,
+    shooter: idx,  // for observers: tells which player fired (target = 1 - shooter)
   });
 
   if (winner !== null) {
     session.rematchVotes.clear();
-    sendBoth(session, { type: 'bs_win', winner });
+    sendAll(session, { type: 'bs_win', winner });
   }
 }
 
@@ -259,11 +347,19 @@ function handleRematch(ws) {
   if (!session || session.phase !== 'over') return;
 
   session.rematchVotes.add(ws.playerIndex);
-  sendBoth(session, { type: 'bs_rematch_vote', votes: session.rematchVotes.size });
+  sendAll(session, { type: 'bs_rematch_vote', votes: session.rematchVotes.size });
 
   if (session.rematchVotes.size >= 2) {
     resetSession(session);
     sendBoth(session, { type: 'bs_rematch_start' });
+    // Observers stay connected — re-send them the fresh placement state
+    sendObservers(session, {
+      type: 'bs_observe_start',
+      phase: 'placement',
+      playerNames: session.players.map(p => p.name),
+      currentTurn: 0,
+      grids: buildObserveGridState(session),
+    });
   }
 }
 
@@ -287,7 +383,9 @@ function handleChat(ws, text) {
   if (!clean) return;
   const session = sessions.get(ws.sessionId);
   if (!session) return;
-  sendBoth(session, { type: 'bs_chat', name: ws.playerName, text: clean });
+  // Observers cannot chat — only relay player messages
+  if (ws.playerIndex === -1) return;
+  sendAll(session, { type: 'bs_chat', name: ws.playerName, text: clean });
 }
 
 // ── Disconnect ────────────────────────────────────────────────────────────────
@@ -301,11 +399,20 @@ function handleDisconnect(ws) {
   const session = sessions.get(ws.sessionId);
   if (!session) return;
 
+  if (ws.playerIndex === -1) {
+    // Observer left — just remove them, game continues
+    session.observers = session.observers.filter(o => o.ws !== ws);
+    ws.sessionId = null;
+    return;
+  }
+
+  // A player disconnected — notify everyone and end session
   session.players.forEach(p => {
     if (p.ws !== ws && p.ws.readyState === 1) {
       send(p.ws, { type: 'bs_opponent_disconnected' });
     }
   });
+  sendObservers(session, { type: 'bs_opponent_disconnected' });
 
   sessions.delete(ws.sessionId);
   ws.sessionId = null;

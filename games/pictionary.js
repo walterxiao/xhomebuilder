@@ -161,7 +161,7 @@ function handleJoin(ws, sessionId, name) {
     return;
   }
 
-  session.guessers.push({ ws, name, status: 'guessing' });
+  session.guessers.push({ ws, name, status: 'guessing', guessesLeft: 3 });
 
   ws.picSessionId = sessionId;
   ws.picRole = 'guesser';
@@ -311,28 +311,32 @@ function handleGuess(ws, animal) {
   if (ws.picStatus !== 'guessing') return;
 
   const correct = animal.trim().toLowerCase() === session.answer.toLowerCase();
-  const newStatus = correct ? 'correct' : 'wrong';
-
-  ws.picStatus = newStatus;
-
-  const guesser = session.guessers.find(g => g.ws === ws);
-  if (guesser) guesser.status = newStatus;
-
-  broadcast(session, {
-    type: 'pic_guess_result',
-    name: ws.picName,
-    animal,
-    correct
-  });
 
   if (correct) {
+    ws.picStatus = 'correct';
+    const guesser = session.guessers.find(g => g.ws === ws);
+    if (guesser) guesser.status = 'correct';
+    broadcast(session, { type: 'pic_guess_result', name: ws.picName, animal, correct: true, eliminated: false, guessesLeft: 0 });
     endGame(sessionId, ws.picName);
     return;
   }
 
-  const allDone = session.guessers.every(g => g.status !== 'guessing');
-  if (allDone) {
-    endGame(sessionId, null);
+  // Wrong guess — decrement attempts
+  const guesser = session.guessers.find(g => g.ws === ws);
+  if (guesser) guesser.guessesLeft = Math.max(0, (guesser.guessesLeft ?? 3) - 1);
+  const guessesLeft = guesser ? guesser.guessesLeft : 0;
+  const eliminated = guessesLeft <= 0;
+
+  if (eliminated) {
+    ws.picStatus = 'wrong';
+    if (guesser) guesser.status = 'wrong';
+  }
+
+  broadcast(session, { type: 'pic_guess_result', name: ws.picName, animal, correct: false, eliminated, guessesLeft });
+
+  if (eliminated) {
+    const allDone = session.guessers.every(g => g.status !== 'guessing');
+    if (allDone) endGame(sessionId, null);
   }
 }
 
@@ -404,7 +408,7 @@ function startRematch(sessionId) {
   session.drawLog = [];
   session.playAgainVotes.clear();
   session.painter = { ws: newPainter.ws, name: newPainter.name };
-  session.guessers = newGuessers.map(p => ({ ws: p.ws, name: p.name, status: 'guessing' }));
+  session.guessers = newGuessers.map(p => ({ ws: p.ws, name: p.name, status: 'guessing', guessesLeft: 3 }));
 
   // Update ws properties
   newPainter.ws.picRole = 'painter';

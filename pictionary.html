@@ -740,6 +740,8 @@ let myAnimalList = null;
 let painterName = '';
 let timerRemaining = 300;
 let gamePhase = 'lobby';
+let guessHistory = [];   // { name, animal, correct }
+let myGuessesLeft = 3;
 
 // Drawing state
 const canvas = document.getElementById('pic-canvas');
@@ -892,6 +894,8 @@ function buildPainterPanel() {
     wsSend({ type: 'pic_clear' });
   });
   panel.appendChild(clearBtn);
+
+  appendHistorySection(panel);
 }
 
 function buildGuesserPanel() {
@@ -904,6 +908,7 @@ function buildGuesserPanel() {
   panel.appendChild(label);
 
   const input = document.createElement('input');
+  input.id = 'guess-input';
   input.type = 'text';
   input.maxLength = 40;
   input.placeholder = 'Type your answer...';
@@ -913,12 +918,21 @@ function buildGuesserPanel() {
   input.addEventListener('blur',  () => { input.style.borderColor = '#2a2a5a'; });
   panel.appendChild(input);
 
+  const attemptsEl = document.createElement('div');
+  attemptsEl.id = 'guess-attempts';
+  attemptsEl.style.cssText = 'font-size:0.75rem;color:#888;margin-top:3px;';
+  attemptsEl.textContent = `${myGuessesLeft} attempt${myGuessesLeft !== 1 ? 's' : ''} remaining`;
+  panel.appendChild(attemptsEl);
+
   const btn = document.createElement('button');
+  btn.id = 'guess-submit-btn';
   btn.textContent = 'Guess';
   btn.style.cssText = 'width:100%;padding:9px;background:#d4af37;color:#1a1a2e;border:none;border-radius:6px;font-size:0.9rem;font-family:inherit;cursor:pointer;font-weight:bold;margin-top:6px;';
   btn.addEventListener('click', submitGuess);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submitGuess(); });
   panel.appendChild(btn);
+
+  appendHistorySection(panel);
 
   function submitGuess() {
     const animal = input.value.trim();
@@ -933,6 +947,53 @@ function buildGuesserPanel() {
 function buildObserverPanel() {
   const panel = document.getElementById('side-panel');
   panel.innerHTML = '<div class="observer-text">Observing...</div>';
+  appendHistorySection(panel);
+}
+
+// ── Guess History ─────────────────────────────────────────────────────────────
+function appendHistorySection(panel) {
+  const label = document.createElement('div');
+  label.className = 'side-section-label';
+  label.style.marginTop = '8px';
+  label.textContent = 'Guesses';
+  panel.appendChild(label);
+
+  const list = document.createElement('div');
+  list.id = 'guess-history-list';
+  list.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+  panel.appendChild(list);
+
+  renderGuessHistory();
+}
+
+function renderGuessHistory() {
+  const list = document.getElementById('guess-history-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (guessHistory.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:0.75rem;color:#444466;font-style:italic;';
+    empty.textContent = 'No guesses yet';
+    list.appendChild(empty);
+    return;
+  }
+  guessHistory.forEach(g => {
+    const row = document.createElement('div');
+    row.style.cssText = 'font-size:0.78rem;padding:3px 0;border-bottom:1px solid #1a2a4a;display:flex;align-items:baseline;gap:4px;';
+    const nameEl = document.createElement('span');
+    nameEl.style.cssText = 'color:#d4af37;white-space:nowrap;flex-shrink:0;';
+    nameEl.textContent = g.name + ':';
+    const wordEl = document.createElement('span');
+    wordEl.style.cssText = 'flex:1;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    wordEl.textContent = g.animal;
+    const iconEl = document.createElement('span');
+    iconEl.style.cssText = `color:${g.correct ? '#60e060' : '#e06060'};flex-shrink:0;`;
+    iconEl.textContent = g.correct ? '✓' : '✗';
+    row.appendChild(nameEl);
+    row.appendChild(wordEl);
+    row.appendChild(iconEl);
+    list.appendChild(row);
+  });
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -1028,6 +1089,8 @@ function handleMessage(msg) {
       document.getElementById('chat-messages').innerHTML = '';
       document.getElementById('status-bar').textContent = '';
       document.getElementById('status-bar').className = '';
+      guessHistory = [];
+      myGuessesLeft = 3;
 
       if (myRole === 'painter') {
         canvas.classList.remove('no-draw');
@@ -1057,15 +1120,31 @@ function handleMessage(msg) {
       break;
 
     case 'pic_guess_result': {
+      // Add to shared history and re-render
+      guessHistory.push({ name: msg.name, animal: msg.animal, correct: msg.correct });
+      renderGuessHistory();
+
       if (msg.name === myName) {
         const bar = document.getElementById('status-bar');
         if (msg.correct) {
           bar.textContent = 'You got it! ✓';
           bar.className = 'status-correct';
-        } else {
-          bar.textContent = 'Wrong! You are now observing.';
+        } else if (msg.eliminated) {
+          bar.textContent = 'No more attempts — you are now observing.';
           bar.className = 'status-wrong';
+          myGuessesLeft = 0;
           buildObserverPanel();
+        } else {
+          // Still has attempts — re-enable input
+          myGuessesLeft = msg.guessesLeft;
+          bar.textContent = `Wrong guess! ${myGuessesLeft} attempt${myGuessesLeft !== 1 ? 's' : ''} remaining.`;
+          bar.className = 'status-wrong';
+          const input = document.getElementById('guess-input');
+          const btn = document.getElementById('guess-submit-btn');
+          const attemptsEl = document.getElementById('guess-attempts');
+          if (input) { input.value = ''; input.disabled = false; input.focus(); input.style.borderColor = '#2a2a5a'; }
+          if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+          if (attemptsEl) attemptsEl.textContent = `${myGuessesLeft} attempt${myGuessesLeft !== 1 ? 's' : ''} remaining`;
         }
       }
       break;

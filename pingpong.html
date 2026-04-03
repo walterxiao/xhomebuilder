@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Ping Pong · Game Hub</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+.screen{display:none;flex-direction:column;height:100vh;overflow:hidden}
+.screen.active{display:flex}
+
+/* ── Name overlay ── */
+#name-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center}
+.nov-card{background:#16213e;border:1px solid #2a2a5a;border-radius:10px;padding:40px 36px;text-align:center;width:min(90vw,320px)}
+.nov-logo{font-size:3rem;margin-bottom:8px}
+.nov-title{font-size:1.1rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase;margin-bottom:6px}
+.nov-sub{font-size:.78rem;color:#555577;letter-spacing:2px;margin-bottom:22px}
+.nov-card input{width:100%;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:10px 12px;font-size:1rem;font-family:inherit;outline:none;margin-bottom:12px}
+.nov-card input:focus{border-color:#d4af37}
+.nov-card button{width:100%;background:#d4af37;border:none;border-radius:4px;color:#1a1a2e;padding:11px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase}
+.nov-card button:hover{background:#f0c040}
+
+/* ── Shared screen content ── */
+.screen-content{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:24px;gap:20px;text-align:center}
+.screen-title{font-size:1.8rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;text-shadow:0 0 20px rgba(212,175,55,.4)}
+.screen-sub{font-size:.8rem;color:#7070a0;letter-spacing:2px;text-transform:uppercase}
+
+/* ── Buttons ── */
+.btn-primary{background:#d4af37;color:#1a1a2e;border:none;border-radius:6px;padding:13px 28px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
+.btn-primary:hover{background:#f0c040}
+.btn-primary:disabled{background:#555;color:#888;cursor:not-allowed}
+.btn-secondary{background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:6px;padding:11px 24px;font-size:.9rem;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s}
+.btn-secondary:hover{border-color:#d4af37;color:#d4af37}
+.btn-link{color:#555577;font-size:.82rem;letter-spacing:2px;text-decoration:none;text-transform:uppercase;padding:8px}
+.btn-link:hover{color:#d4af37}
+
+/* ── Team selection ── */
+#screen-team .screen-content{justify-content:flex-start;padding-top:40px}
+.team-grid{display:flex;gap:16px;width:100%;max-width:520px}
+.team-card{flex:1;background:#16213e;border:2px solid #2a2a5a;border-radius:10px;padding:20px 16px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.team-card.blue{border-color:#3366aa}
+.team-card.red{border-color:#aa3344}
+.team-label{font-size:.85rem;letter-spacing:3px;text-transform:uppercase;font-weight:bold}
+.team-label.blue{color:#4488ff}
+.team-label.red{color:#ff4455}
+.player-slots{width:100%;min-height:48px;display:flex;flex-direction:column;gap:4px}
+.slot-name{background:#1a1a2e;border-radius:4px;padding:5px 8px;font-size:.82rem;color:#c0c0e0;text-align:center}
+.slot-empty{border:1px dashed #2a2a5a;border-radius:4px;padding:5px 8px;font-size:.78rem;color:#3a3a5a;text-align:center}
+.btn-team{width:100%;border:none;border-radius:6px;padding:11px;font-size:.88rem;font-family:inherit;font-weight:bold;letter-spacing:1px;cursor:pointer;text-transform:uppercase;transition:opacity .15s}
+.btn-team:disabled{opacity:.35;cursor:not-allowed}
+.btn-team.blue{background:#4488ff;color:#fff}
+.btn-team.blue:not(:disabled):hover{background:#5599ff}
+.btn-team.red{background:#ff4455;color:#fff}
+.btn-team.red:not(:disabled):hover{background:#ff5566}
+
+/* ── Lobby ── */
+.lobby-teams{display:flex;align-items:flex-start;gap:16px;width:100%;max-width:480px}
+.lobby-team{flex:1;background:#16213e;border-radius:10px;padding:16px;border:1px solid #2a2a5a}
+.lt-header{font-size:.8rem;letter-spacing:2px;text-transform:uppercase;font-weight:bold;margin-bottom:10px;text-align:center}
+.lt-header.blue{color:#4488ff}
+.lt-header.red{color:#ff4455}
+.lp{background:#1a1a2e;border-radius:4px;padding:6px 10px;font-size:.85rem;color:#c0c0e0;text-align:center;margin-bottom:4px}
+.lp.empty{color:#333355;font-size:.78rem}
+.lobby-vs{font-size:1.4rem;color:#555577;font-weight:bold;padding-top:40px}
+#waiting-msg{font-size:.82rem;color:#7070a0;letter-spacing:1px}
+
+/* ── Game screen ── */
+#screen-game{background:#0d1b2a}
+#score-bar{height:52px;flex-shrink:0;background:#16213e;display:flex;align-items:center;justify-content:center;gap:0;border-bottom:1px solid #2a2a5a}
+.score-side{display:flex;align-items:center;gap:10px;min-width:140px}
+.score-side.blue-side{justify-content:flex-end}
+.score-side.red-side{justify-content:flex-start}
+.team-badge{font-size:.72rem;letter-spacing:2px;text-transform:uppercase;font-weight:bold;padding:3px 8px;border-radius:3px}
+.team-badge.blue{background:#1a3366;color:#4488ff}
+.team-badge.red{background:#331a22;color:#ff4455}
+.score-num{font-size:1.6rem;font-weight:bold;min-width:32px;text-align:center}
+#score-sep{width:2px;height:28px;background:#2a2a5a;margin:0 12px;flex-shrink:0}
+#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative}
+#canvas{display:block;max-width:100%;max-height:100%;image-rendering:pixelated}
+#serve-msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.7);color:#d4af37;font-size:1.1rem;letter-spacing:3px;text-transform:uppercase;padding:12px 28px;border-radius:8px;border:1px solid #d4af37;pointer-events:none;transition:opacity .4s;text-align:center}
+#serve-msg.hidden{opacity:0;pointer-events:none}
+#ctrl-bar{height:85px;flex-shrink:0;display:flex;gap:12px;padding:10px 14px;background:#16213e;border-top:1px solid #2a2a5a}
+.obs-mode #ctrl-bar{display:none}
+.ctrl-btn{flex:1;border:none;border-radius:10px;font-size:2rem;background:#1e2e50;color:#c0c0e0;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;display:flex;align-items:center;justify-content:center}
+.ctrl-btn:active,.ctrl-btn.pressed{background:#3a5090}
+.ctrl-btn-label{font-size:.65rem;letter-spacing:1px;text-transform:uppercase;color:#555577;display:block;margin-top:2px}
+
+/* ── Chat ── */
+#chat-fab{position:fixed;bottom:96px;right:12px;width:44px;height:44px;border-radius:50%;background:#2a3a5e;color:#c0c0e0;font-size:1.2rem;border:1px solid #3a4a7a;cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center;transition:background .15s}
+#chat-fab:hover{background:#3a4a7a}
+#chat-fab.notif{background:#d4af37;color:#1a1a2e;animation:pulse .6s ease-in-out 2}
+.obs-mode #chat-fab{bottom:12px}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+#chat-panel{position:fixed;bottom:0;right:0;width:min(100vw,320px);height:260px;background:#16213e;border-top:2px solid #d4af37;border-left:2px solid #d4af37;border-radius:12px 0 0 0;display:none;flex-direction:column;z-index:45}
+#chat-panel.open{display:flex}
+#chat-close{padding:8px 12px;font-size:.8rem;color:#555577;cursor:pointer;text-align:right;border-bottom:1px solid #2a2a5a}
+#chat-close:hover{color:#d4af37}
+#chat-msgs{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.chat-msg{font-size:.8rem;color:#c0c0e0;line-height:1.4;word-break:break-word}
+.chat-name{color:#d4af37;font-weight:bold}
+#chat-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #2a2a5a}
+#chat-inp{flex:1;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:6px 10px;font-size:.85rem;font-family:inherit;outline:none}
+#chat-inp:focus{border-color:#d4af37}
+#chat-send-btn{background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;padding:6px 12px;font-size:.85rem;cursor:pointer;font-weight:bold}
+
+/* ── Game over ── */
+#over-trophy{font-size:4rem;line-height:1}
+#over-title{font-size:1.5rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase}
+#over-names{font-size:1rem;color:#9090b0}
+#over-score{font-size:1.3rem;color:#c0c0e0;font-weight:bold;letter-spacing:2px}
+
+/* ── Toast ── */
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#2a2a4a;color:#e0d5c1;padding:10px 20px;border-radius:6px;font-size:.85rem;border:1px solid #3a3a6a;opacity:0;transition:opacity .3s;pointer-events:none;z-index:200;white-space:nowrap}
+#toast.show{opacity:1}
+
+@media(max-width:400px){
+  .team-grid{flex-direction:column}
+  .lobby-teams{flex-direction:column}
+  .lobby-vs{padding-top:0}
+}
+</style>
+</head>
+<body>
+
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-logo">🏓</div>
+    <div class="nov-title">Ping Pong</div>
+    <div class="nov-sub">Enter your name to play</div>
+    <input id="name-inp" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="name-btn">Play</button>
+  </div>
+</div>
+
+<!-- Screen: team selection -->
+<div id="screen-team" class="screen active">
+  <div class="screen-content">
+    <div class="screen-title">Ping Pong</div>
+    <div class="screen-sub">2v2 Table Tennis · First to 11</div>
+    <div class="team-grid">
+      <div class="team-card blue">
+        <div class="team-label blue">🔵 Blue Team</div>
+        <div id="blue-slots" class="player-slots">
+          <div class="slot-empty">Empty</div>
+          <div class="slot-empty">Empty</div>
+        </div>
+        <button id="btn-join-blue" class="btn-team blue">Join Blue</button>
+      </div>
+      <div class="team-card red">
+        <div class="team-label red">🔴 Red Team</div>
+        <div id="red-slots" class="player-slots">
+          <div class="slot-empty">Empty</div>
+          <div class="slot-empty">Empty</div>
+        </div>
+        <button id="btn-join-red" class="btn-team red">Join Red</button>
+      </div>
+    </div>
+    <button id="btn-observe" class="btn-secondary">👁 Observe</button>
+    <a href="/" class="btn-link">← Game Hub</a>
+  </div>
+</div>
+
+<!-- Screen: lobby waiting -->
+<div id="screen-lobby" class="screen">
+  <div class="screen-content">
+    <div class="screen-title">Waiting Room</div>
+    <div class="lobby-teams">
+      <div class="lobby-team">
+        <div class="lt-header blue">🔵 Blue Team</div>
+        <div id="lobby-blue"><div class="lp empty">–</div></div>
+      </div>
+      <div class="lobby-vs">VS</div>
+      <div class="lobby-team">
+        <div class="lt-header red">🔴 Red Team</div>
+        <div id="lobby-red"><div class="lp empty">–</div></div>
+      </div>
+    </div>
+    <div id="waiting-msg">Waiting for players on both teams…</div>
+    <button id="btn-start" class="btn-primary" style="display:none">▶ Start Game</button>
+    <a href="/" class="btn-link">← Game Hub</a>
+  </div>
+</div>
+
+<!-- Screen: game -->
+<div id="screen-game" class="screen">
+  <div id="score-bar">
+    <div class="score-side blue-side">
+      <span id="score-blue" class="score-num">0</span>
+      <span class="team-badge blue">Blue</span>
+    </div>
+    <div id="score-sep"></div>
+    <div class="score-side red-side">
+      <span class="team-badge red">Red</span>
+      <span id="score-red" class="score-num">0</span>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="serve-msg" class="hidden">Get Ready!</div>
+  </div>
+  <div id="ctrl-bar">
+    <button id="btn-left" class="ctrl-btn" aria-label="Move left">◀</button>
+    <button id="btn-right" class="ctrl-btn" aria-label="Move right">▶</button>
+  </div>
+  <button id="chat-fab" title="Chat">💬</button>
+  <div id="chat-panel">
+    <div id="chat-close">✕ Close</div>
+    <div id="chat-msgs"></div>
+    <div id="chat-row">
+      <input id="chat-inp" placeholder="Message…" maxlength="200" autocomplete="off">
+      <button id="chat-send-btn">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- Screen: game over -->
+<div id="screen-over" class="screen">
+  <div class="screen-content">
+    <div id="over-trophy">🏆</div>
+    <div id="over-title">Team Wins!</div>
+    <div id="over-names"></div>
+    <div id="over-score"></div>
+    <button id="btn-rematch" class="btn-primary">↩ Rematch</button>
+    <a href="/" class="btn-link">← Game Hub</a>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script>
+// ── Constants (match server) ─────────────────────────────────────────────────
+const TW = 600, TH = 800, BR = 12, PH = 15;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws, myTeam = -1, mySlot = -1, myName = '';
+let isObs = false, isHost = false;
+let gState = 'init'; // init | waiting | playing | game_over
+let ball = null, paddles = [], ballTrail = [];
+let score = [0, 0];
+let inp = { l: false, r: false };
+
+// ── Canvas ───────────────────────────────────────────────────────────────────
+const cvs = document.getElementById('canvas');
+const ctx = cvs.getContext('2d');
+cvs.width = TW; cvs.height = TH;
+
+let dirty = false;
+function markDirty() { dirty = true; }
+(function loop() {
+  if (dirty) { render(); dirty = false; }
+  requestAnimationFrame(loop);
+})();
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toast(msg, ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+let serveMsgTimer;
+function showServe(txt) {
+  const el = document.getElementById('serve-msg');
+  el.textContent = txt;
+  el.classList.remove('hidden');
+  clearTimeout(serveMsgTimer);
+  serveMsgTimer = setTimeout(() => el.classList.add('hidden'), 2200);
+}
+
+function updateScores() {
+  document.getElementById('score-blue').textContent = score[0];
+  document.getElementById('score-red').textContent  = score[1];
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/pingpong`);
+  ws.onopen  = () => {};
+  ws.onclose = () => toast('Connection lost');
+  ws.onerror = () => toast('Connection error');
+  ws.onmessage = e => {
+    try { handle(JSON.parse(e.data)); } catch(err) {}
+  };
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handle(msg) {
+  switch (msg.type) {
+
+    case 'lobby':
+      if (gState === 'init') updateTeamScreen(msg);
+      else if (gState === 'waiting') updateLobbyScreen(msg);
+      break;
+
+    case 'joined':
+      myTeam = msg.team; mySlot = msg.slot;
+      isHost = msg.isHost;
+      gState = 'waiting';
+      showScreen('screen-lobby');
+      break;
+
+    case 'obs_joined':
+      isObs = true; gState = 'waiting';
+      if (msg.state === 'playing') {
+        gState = 'playing';
+        score = msg.score || [0,0];
+        updateScores();
+        document.getElementById('screen-game').classList.add('obs-mode');
+        showScreen('screen-game');
+      } else {
+        document.getElementById('waiting-msg').textContent = 'Observing…';
+        showScreen('screen-lobby');
+      }
+      break;
+
+    case 'start':
+      gState = 'playing';
+      ball = null; paddles = []; ballTrail = [];
+      score = [0,0]; updateScores();
+      document.getElementById('screen-game').classList.remove('obs-mode');
+      if (isObs) document.getElementById('screen-game').classList.add('obs-mode');
+      showScreen('screen-game');
+      showServe('Get Ready!');
+      markDirty();
+      break;
+
+    case 'serve':
+      if (!isObs) {
+        const mine = msg.serving === myTeam;
+        showServe(mine ? 'Your serve! ▶' : 'Opponent serves…');
+      } else {
+        showServe(msg.serving === 0 ? 'Blue serves' : 'Red serves');
+      }
+      break;
+
+    case 'g':  // game state ~60fps
+      ball = msg.b;
+      paddles = msg.p;
+      score = msg.sc;
+      ballTrail.push({ x: ball.x, y: ball.y });
+      if (ballTrail.length > 14) ballTrail.shift();
+      updateScores();
+      markDirty();
+      break;
+
+    case 'pt': // point scored
+      score = msg.score; ball = null; ballTrail = [];
+      updateScores(); markDirty();
+      if (!isObs) {
+        showServe(msg.scorer === myTeam ? '✔ You score!' : '✘ They score!');
+      } else {
+        showServe(msg.scorer === 0 ? '🔵 Blue scores!' : '🔴 Red scores!');
+      }
+      break;
+
+    case 'over':
+      gState = 'game_over';
+      const isWin = !isObs && msg.winner === myTeam;
+      document.getElementById('over-trophy').textContent = isWin ? '🏆' : '😔';
+      document.getElementById('over-title').textContent =
+        isObs
+          ? `${msg.winner === 0 ? '🔵 Blue' : '🔴 Red'} Wins!`
+          : (isWin ? 'You Win! 🎉' : 'You Lose…');
+      document.getElementById('over-names').textContent = msg.names.join(' & ');
+      document.getElementById('over-score').textContent =
+        `Blue ${msg.score[0]}  –  ${msg.score[1]} Red`;
+      showScreen('screen-over');
+      break;
+
+    case 'rematch':
+      gState = 'waiting'; isObs = false;
+      ball = null; paddles = []; ballTrail = [];
+      document.getElementById('screen-game').classList.remove('obs-mode');
+      showScreen('screen-lobby');
+      break;
+
+    case 'left':
+      toast(`${msg.name} disconnected`);
+      gState = 'waiting';
+      showScreen('screen-lobby');
+      break;
+
+    case 'chat':
+      addChat(msg.name, msg.text);
+      break;
+  }
+}
+
+// ── Lobby UI ─────────────────────────────────────────────────────────────────
+function updateTeamScreen(msg) {
+  const blue = (msg.players||[]).filter(p => p.team === 0);
+  const red  = (msg.players||[]).filter(p => p.team === 1);
+
+  document.getElementById('blue-slots').innerHTML =
+    blue.map(p => `<div class="slot-name">${esc(p.name)}</div>`).join('') +
+    Array(2 - blue.length).fill('<div class="slot-empty">Empty</div>').join('');
+
+  document.getElementById('red-slots').innerHTML =
+    red.map(p => `<div class="slot-name">${esc(p.name)}</div>`).join('') +
+    Array(2 - red.length).fill('<div class="slot-empty">Empty</div>').join('');
+
+  document.getElementById('btn-join-blue').disabled = blue.length >= 2;
+  document.getElementById('btn-join-red').disabled  = red.length  >= 2;
+}
+
+function updateLobbyScreen(msg) {
+  const blue = (msg.players||[]).filter(p => p.team === 0);
+  const red  = (msg.players||[]).filter(p => p.team === 1);
+
+  document.getElementById('lobby-blue').innerHTML =
+    blue.length ? blue.map(p => `<div class="lp">${esc(p.name)}</div>`).join('')
+                : '<div class="lp empty">–</div>';
+  document.getElementById('lobby-red').innerHTML =
+    red.length ? red.map(p => `<div class="lp">${esc(p.name)}</div>`).join('')
+               : '<div class="lp empty">–</div>';
+
+  const canStart = blue.length > 0 && red.length > 0;
+  document.getElementById('waiting-msg').textContent =
+    isObs ? 'Observing…' : (canStart ? 'Ready to start!' : 'Waiting for players on both teams…');
+  const sb = document.getElementById('btn-start');
+  sb.style.display = (isHost && canStart && !isObs) ? 'block' : 'none';
+}
+</script>
+<script>
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, TW, TH);
+
+  // Apply 180° rotation for Red (team 1) players so their paddle is at the bottom
+  ctx.save();
+  if (myTeam === 1 && !isObs) {
+    ctx.translate(TW, TH);
+    ctx.rotate(Math.PI);
+  }
+
+  // Table surface
+  ctx.fillStyle = '#1a5e20';
+  ctx.fillRect(0, 0, TW, TH);
+
+  // Side walls / table border
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(2, 2, TW - 4, TH - 4);
+
+  // Center service line (dashed)
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([16, 12]);
+  ctx.beginPath();
+  ctx.moveTo(20, TH / 2);
+  ctx.lineTo(TW - 20, TH / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Net (solid white bar)
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(0, TH / 2);
+  ctx.lineTo(TW, TH / 2);
+  ctx.stroke();
+
+  // Net center post dot
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(TW / 2, TH / 2, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ball trail
+  for (let i = 0; i < ballTrail.length; i++) {
+    const frac = i / ballTrail.length;
+    ctx.globalAlpha = frac * 0.45;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(ballTrail[i].x, ballTrail[i].y, BR * frac * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Ball
+  if (ball) {
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, BR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Paddles
+  for (const p of paddles) {
+    const col = p.t === 0 ? '#4488ff' : '#ff4455';
+    const isMe = !isObs && p.t === myTeam;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = isMe ? 20 : 8;
+    ctx.fillStyle = col;
+    rrect(p.x, p.y, p.w, PH, 5);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore(); // end rotation transform
+
+  // Draw names outside the rotation (using converted screen coords)
+  drawNames();
+}
+
+function rrect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Convert server absolute coords → canvas screen coords
+function toScreen(x, y) {
+  if (myTeam === 1 && !isObs) return { x: TW - x, y: TH - y };
+  return { x, y };
+}
+
+function drawNames() {
+  ctx.font = 'bold 11px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  for (const p of paddles) {
+    const col = p.t === 0 ? '#88aaff' : '#ff8899';
+    ctx.fillStyle = col;
+    // Center of paddle in screen coords
+    const sc = toScreen(p.x + p.w / 2, p.y + PH / 2);
+    // If paddle center is in upper half of screen → name above, else below
+    const nameY = sc.y < TH / 2
+      ? toScreen(p.x, p.y).y - 8
+      : toScreen(p.x, p.y + PH).y + 15;
+    ctx.fillText(p.n, sc.x, nameY);
+  }
+}
+</script>
+<script>
+// ── Input handling ────────────────────────────────────────────────────────────
+function sendInp(l, r) {
+  if (isObs) return;
+  if (inp.l === l && inp.r === r) return; // no change
+  inp.l = l; inp.r = r;
+  wsSend({ type: 'in', l, r });
+}
+
+const btnL = document.getElementById('btn-left');
+const btnR = document.getElementById('btn-right');
+
+// Touch events – prevent default to stop scroll / double-tap zoom
+btnL.addEventListener('touchstart',  e => { e.preventDefault(); btnL.classList.add('pressed');    sendInp(true,  inp.r); }, { passive: false });
+btnL.addEventListener('touchend',    e => { e.preventDefault(); btnL.classList.remove('pressed'); sendInp(false, inp.r); }, { passive: false });
+btnL.addEventListener('touchcancel', e => { e.preventDefault(); btnL.classList.remove('pressed'); sendInp(false, inp.r); }, { passive: false });
+
+btnR.addEventListener('touchstart',  e => { e.preventDefault(); btnR.classList.add('pressed');    sendInp(inp.l, true);  }, { passive: false });
+btnR.addEventListener('touchend',    e => { e.preventDefault(); btnR.classList.remove('pressed'); sendInp(inp.l, false); }, { passive: false });
+btnR.addEventListener('touchcancel', e => { e.preventDefault(); btnR.classList.remove('pressed'); sendInp(inp.l, false); }, { passive: false });
+
+// Mouse events (desktop)
+btnL.addEventListener('mousedown',  () => sendInp(true,  inp.r));
+btnL.addEventListener('mouseup',    () => sendInp(false, inp.r));
+btnL.addEventListener('mouseleave', () => { if (inp.l) sendInp(false, inp.r); });
+
+btnR.addEventListener('mousedown',  () => sendInp(inp.l, true));
+btnR.addEventListener('mouseup',    () => sendInp(inp.l, false));
+btnR.addEventListener('mouseleave', () => { if (inp.r) sendInp(inp.l, false); });
+
+// Keyboard (desktop)
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('screen-game').classList.contains('active')) return;
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { e.preventDefault(); sendInp(true, inp.r); }
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { e.preventDefault(); sendInp(inp.l, true); }
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') sendInp(false, inp.r);
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') sendInp(inp.l, false);
+});
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+const chatPanel = document.getElementById('chat-panel');
+document.getElementById('chat-fab').addEventListener('click', () => {
+  chatPanel.classList.toggle('open');
+  document.getElementById('chat-fab').classList.remove('notif');
+});
+document.getElementById('chat-close').addEventListener('click', () => chatPanel.classList.remove('open'));
+
+function sendChat() {
+  const inp2 = document.getElementById('chat-inp');
+  const text = inp2.value.trim();
+  if (!text) return;
+  wsSend({ type: 'chat', text });
+  inp2.value = '';
+}
+document.getElementById('chat-send-btn').addEventListener('click', sendChat);
+document.getElementById('chat-inp').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.stopPropagation(); sendChat(); }
+});
+
+function addChat(name, text) {
+  const msgs = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  div.innerHTML = `<span class="chat-name">${esc(name)}</span> ${esc(text)}`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  if (!chatPanel.classList.contains('open')) {
+    document.getElementById('chat-fab').classList.add('notif');
+  }
+}
+
+// ── Name / connect flow ───────────────────────────────────────────────────────
+const nameOverlay = document.getElementById('name-overlay');
+const nameInp = document.getElementById('name-inp');
+
+const saved = localStorage.getItem('phub_name') || '';
+nameInp.value = saved;
+
+function confirmName() {
+  const n = nameInp.value.trim().slice(0, 24);
+  if (!n) { nameInp.focus(); return; }
+  myName = n;
+  localStorage.setItem('phub_name', n);
+  nameOverlay.style.display = 'none';
+  connect();
+}
+
+document.getElementById('name-btn').addEventListener('click', confirmName);
+nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmName(); });
+
+if (saved) {
+  myName = saved;
+  nameOverlay.style.display = 'none';
+  connect();
+}
+
+// ── Team / observe buttons ────────────────────────────────────────────────────
+document.getElementById('btn-join-blue').addEventListener('click', () => {
+  wsSend({ type: 'join', name: myName, team: 0 });
+});
+document.getElementById('btn-join-red').addEventListener('click', () => {
+  wsSend({ type: 'join', name: myName, team: 1 });
+});
+document.getElementById('btn-observe').addEventListener('click', () => {
+  wsSend({ type: 'observe', name: myName });
+});
+
+// ── Start / rematch ───────────────────────────────────────────────────────────
+document.getElementById('btn-start').addEventListener('click', () => {
+  wsSend({ type: 'start' });
+});
+document.getElementById('btn-rematch').addEventListener('click', () => {
+  wsSend({ type: 'rematch' });
+});
+</script>
+</body>
+</html>

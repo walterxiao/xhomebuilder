@@ -266,6 +266,11 @@
     :root { --sq: 64px; }
     @media (max-width: 700px) { :root { --sq: 44px; } }
     @media (max-width: 480px) { :root { --sq: 36px; } }
+    @media (max-width: 600px) {
+      #game-main { flex-direction: column; align-items: center; padding: 10px; }
+      #right-panel { width: 100%; max-width: none; margin-left: 0; margin-top: 10px; max-height: 200px; overflow: hidden; }
+      #move-history { max-height: 110px; }
+    }
 
     #chess-board {
       display: grid;

@@ -398,6 +398,8 @@ function resizeCanvas() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // Canvas was 0×0 while screen-game was display:none — resize now that it's visible
+  if (id === 'screen-game') resizeCanvas();
 }
 
 function showToast(msg, dur = 3000) {
@@ -588,10 +590,10 @@ function handleMsg(msg) {
     case 'start':
       players = msg.players;
       stack = [];
-      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
-      showScreen('screen-game');
+      showScreen('screen-game'); // resizes canvas first
+      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       updateDropBtn();
       if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
       break;
@@ -663,10 +665,10 @@ function handleMsg(msg) {
     case 'play_again':
       players = msg.players;
       stack = [];
-      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
-      showScreen('screen-game');
+      showScreen('screen-game'); // resizes canvas first
+      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       updateDropBtn();
       break;
 

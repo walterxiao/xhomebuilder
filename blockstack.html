@@ -379,7 +379,8 @@ window.addEventListener('load', () => {
   window.addEventListener('resize', () => {
     resizeCanvas();
     const init = getInitialViewportY();
-    if (viewportY < init) { viewportY = init; targetViewportY = init; }
+    viewportY = init; targetViewportY = init;
+    updateTargetViewport();
   });
   loadSessions();
   setInterval(loadSessions, 5000);
@@ -758,16 +759,24 @@ function getStackTopY() {
 }
 
 function updateTargetViewport() {
+  if (stack.length === 0) return;
   const topY = getStackTopY();
-  const desiredTopOnCanvas = canvasH * 0.3;
-  const newTarget = topY - desiredTopOnCanvas;
-  const minVP = getInitialViewportY();
-  targetViewportY = Math.max(minVP, Math.max(targetViewportY, newTarget));
+  // Only scroll when stack top rises above 1/3 from the canvas top
+  // (= 2/3 from the bottom, as the user wants)
+  const topOnCanvas = topY - viewportY;
+  if (topOnCanvas < canvasH / 3) {
+    // Required viewportY to keep stack top at 1/3 from top
+    const newTarget = topY - canvasH / 3;
+    // newTarget is more negative than current → decrease targetViewportY
+    if (newTarget < targetViewportY) {
+      targetViewportY = newTarget;
+    }
+  }
 }
 
 function getInitialViewportY() {
-  // Keep ground (world Y=520) visible at ~85% of canvas height
-  return Math.max(0, GROUND_Y - canvasH * 0.85);
+  // Place ground 20px above the canvas bottom; can be negative (fine)
+  return GROUND_Y - canvasH + 20;
 }
 
 // ── Collapse animation ──

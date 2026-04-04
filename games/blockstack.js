@@ -5,8 +5,8 @@ const GAME_W = 400;
 const GROUND_Y = 520;
 const MAX_PLAYERS = 6;
 const TURN_TIME = 15; // seconds
-const MIN_BW = 70, MAX_BW = 190;
-const MIN_BH = 22, MAX_BH = 52;
+const MIN_BW = 35, MAX_BW = 95;
+const MIN_BH = 11, MAX_BH = 26;
 const COLORS = ['#e74c3c','#3498db','#2ecc71','#f1c40f','#9b59b6','#1abc9c'];
 
 const wss = new WebSocketServer({ noServer: true });

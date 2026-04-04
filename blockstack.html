@@ -353,8 +353,11 @@ let shakeDx = 0, shakeDy = 0;
 let fallingAnim = null; // { block, fromY, toY, startTime, duration }
 let squishAnim = null;  // { block, startTime }
 let collapseAnim = null; // { particles, startTime, duration }
-let preCollapse = false; // intense wobble before scatter
-let flashAnim = null;   // { startTime, duration } red flash overlay
+let preCollapse = false;     // intense wobble before scatter
+let preCollapseStart = 0;    // timestamp preCollapse began
+let unstableBlockId = -1;    // ID of the block that caused the collapse
+let tipDir = 1;              // direction the unstable block leans (±1)
+let flashAnim = null;        // { startTime, duration } red flash overlay
 let wobbleTime = 0;
 
 // ── Init ──
@@ -518,6 +521,9 @@ function resetLocalState() {
   squishAnim = null;
   collapseAnim = null;
   preCollapse = false;
+  preCollapseStart = 0;
+  unstableBlockId = -1;
+  tipDir = 1;
   flashAnim = null;
   gameOver = false;
   isObserver = false;
@@ -639,7 +645,9 @@ function handleMsg(msg) {
       setTimeout(() => {
         stack.push(b);
         if (b.stable === false) {
-          // Pre-collapse: intense wobble warning before server triggers game_over
+          unstableBlockId = b.id;
+          tipDir = Math.random() > 0.5 ? 1 : -1;
+          preCollapseStart = performance.now();
           preCollapse = true;
           shakeAmp = 8;
         } else {
@@ -786,6 +794,7 @@ function getInitialViewportY() {
 }
 
 // ── Slider constraint: new block must touch the topmost block ──
+
 function getSliderConstraint() {
   if (!currentBlock || stack.length === 0) return { min: 0, max: GAME_W - (currentBlock ? currentBlock.w : 0) };
   const topY = getStackTopY();
@@ -811,24 +820,29 @@ function startCollapseAnim() {
   const stackTopY = getStackTopY();
   const stackHeight = Math.max(1, GROUND_Y - stackTopY);
 
-  // Convert blocks to canvas-space particles so they stay visible during collapse
+  // Canvas-space particles with cascade delay: top blocks fall first
   const particles = stack.map(b => {
     const cv = worldToCanvas(b.x + b.w / 2, b.y + b.h / 2);
     const relH = (GROUND_Y - b.y) / stackHeight; // 0=ground, 1=top
-    const side = Math.random() > 0.5 ? 1 : -1;
+    const isUnstable = b.id === unstableBlockId;
+    const side = isUnstable ? tipDir : (Math.random() > 0.5 ? 1 : -1);
+    // Top blocks fall immediately; bottom blocks wait up to 700ms
+    const delay = isUnstable ? 0 : Math.round((1 - relH) * 700);
     return {
-      x: cv.x, y: cv.y,
+      x: cv.x, y: cv.y,   // mutable position (only updated after delay)
+      x0: cv.x, y0: cv.y, // original canvas position (for pre-fall rendering)
       w: b.w, h: b.h,
       color: b.color,
-      vx: side * (80 + relH * 280) * (0.6 + Math.random()),
-      vy: -(60 + relH * 220) * (0.5 + Math.random()),
+      vx: side * (90 + relH * 260) * (0.5 + Math.random()),
+      vy: -(50 + relH * 200) * (0.5 + Math.random()),
       rot: 0,
-      rotV: side * (5 + Math.random() * 9),
-      opacity: 1
+      rotV: side * (5 + Math.random() * 8),
+      opacity: 1,
+      delay
     };
   });
 
-  collapseAnim = { particles, startTime: performance.now(), duration: 3000 };
+  collapseAnim = { particles, startTime: performance.now(), duration: 3200 };
   stack = [];
 }
 
@@ -904,14 +918,34 @@ function draw(ts) {
 
     // Wobble — intensifies during pre-collapse warning
     if (b.wobble || preCollapse) {
-      const freq = preCollapse ? 12 : 4;
-      const amp = preCollapse ? 0.14 : 0.035;
-      const angle = Math.sin(wobbleTime * freq + b.id * 0.9) * amp;
+      const isUnstable = preCollapse && b.id === unstableBlockId;
+      let angle;
+      if (isUnstable) {
+        // Growing directional lean toward the fall side
+        const tpc = Math.min(1, (now - preCollapseStart) / 1400);
+        const tipAmp = 0.07 + tpc * 0.30;
+        angle = Math.sin(wobbleTime * 9 + tpc * 4) * tipAmp * tipDir;
+      } else {
+        const freq = preCollapse ? 11 : 4;
+        const baseAmp = preCollapse ? 0.09 : 0.035;
+        angle = Math.sin(wobbleTime * freq + b.id * 0.9) * baseAmp;
+      }
       const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
       ctx.save();
       ctx.translate(cv.x, cv.y);
       ctx.rotate(angle);
-      drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+      if (isUnstable) {
+        ctx.shadowColor = '#ff2222';
+        ctx.shadowBlur = 20;
+        drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.38 + 0.2 * Math.abs(Math.sin(wobbleTime * 8));
+        ctx.fillStyle = '#ff3333';
+        roundRect(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, 4);
+        ctx.fill();
+      } else {
+        drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+      }
       ctx.restore();
       continue;
     }
@@ -1034,26 +1068,49 @@ function draw(ts) {
     ctx.restore();
   }
 
-  // Collapse scatter animation — particles stored in canvas-space
+  // Collapse cascade animation — canvas-space particles with per-block delays
   if (collapseAnim) {
     const elapsed = now - collapseAnim.startTime;
     const dt = 1 / 60;
+
+    // Physics update — only for particles whose delay has passed
     for (const p of collapseAnim.particles) {
+      if (elapsed < p.delay) continue;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 560 * dt; // gravity in canvas-space (px/s²)
+      p.vy += 560 * dt; // gravity
       p.rot += p.rotV * dt;
-      p.opacity = Math.max(0, 1 - elapsed / collapseAnim.duration);
+      const fallDur = collapseAnim.duration - p.delay;
+      p.opacity = Math.max(0, 1 - (elapsed - p.delay) / fallDur);
     }
+
+    // Render
     for (const p of collapseAnim.particles) {
-      if (p.opacity <= 0) continue;
-      ctx.save();
-      ctx.globalAlpha = p.opacity;
-      ctx.translate(p.x, p.y); // canvas-space directly — always visible
-      ctx.rotate(p.rot);
-      drawBlock(ctx, -p.w / 2, -p.h / 2, p.w, p.h, p.color);
-      ctx.restore();
+      const waitLeft = p.delay - elapsed; // ms until this block falls (negative = already falling)
+      if (waitLeft > 0) {
+        // Still in place — flash red as its turn approaches (last 450ms of wait)
+        ctx.save();
+        ctx.translate(p.x0, p.y0);
+        drawBlock(ctx, -p.w / 2, -p.h / 2, p.w, p.h, p.color);
+        if (waitLeft < 450) {
+          const redT = 1 - waitLeft / 450;
+          ctx.globalAlpha = redT * 0.65;
+          ctx.fillStyle = '#ff3333';
+          roundRect(ctx, -p.w / 2, -p.h / 2, p.w, p.h, 4);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else {
+        if (p.opacity <= 0) continue;
+        ctx.save();
+        ctx.globalAlpha = p.opacity;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        drawBlock(ctx, -p.w / 2, -p.h / 2, p.w, p.h, p.color);
+        ctx.restore();
+      }
     }
+
     if (elapsed > collapseAnim.duration) collapseAnim = null;
   }
 

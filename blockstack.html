@@ -376,7 +376,11 @@ window.addEventListener('load', () => {
   });
 
   resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    const init = getInitialViewportY();
+    if (viewportY < init) { viewportY = init; targetViewportY = init; }
+  });
   loadSessions();
   setInterval(loadSessions, 5000);
 });
@@ -502,7 +506,7 @@ function resetLocalState() {
   sliderX = 0;
   remoteSliderX = 0;
   sliderDir = 1;
-  viewportY = 0;
+  viewportY = 0;     // will be corrected by getInitialViewportY after canvas is sized
   targetViewportY = 0;
   shakeAmp = 0;
   fallingAnim = null;
@@ -541,6 +545,9 @@ function handleMsg(msg) {
         currentBlock = msg.currentBlock;
         timerLeft = msg.timeLeft;
         showScreen('screen-game');
+        const iv = getInitialViewportY();
+        viewportY = iv; targetViewportY = iv;
+        updateTargetViewport(); // scroll to show stack top
         updateTopBar();
         updateDropBtn();
         if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
@@ -581,7 +588,7 @@ function handleMsg(msg) {
     case 'start':
       players = msg.players;
       stack = [];
-      viewportY = 0; targetViewportY = 0;
+      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
       showScreen('screen-game');
@@ -656,7 +663,7 @@ function handleMsg(msg) {
     case 'play_again':
       players = msg.players;
       stack = [];
-      viewportY = 0; targetViewportY = 0;
+      { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
       showScreen('screen-game');
@@ -750,16 +757,15 @@ function getStackTopY() {
 
 function updateTargetViewport() {
   const topY = getStackTopY();
-  // Target: stack top should be at ~30% from top of canvas
   const desiredTopOnCanvas = canvasH * 0.3;
-  // viewportY shifts the world up (positive = scroll up)
-  // canvasY = worldY - viewportY
-  // desiredTopOnCanvas = topY - targetViewportY
-  // targetViewportY = topY - desiredTopOnCanvas
   const newTarget = topY - desiredTopOnCanvas;
-  if (newTarget > targetViewportY) {
-    targetViewportY = newTarget;
-  }
+  const minVP = getInitialViewportY();
+  targetViewportY = Math.max(minVP, Math.max(targetViewportY, newTarget));
+}
+
+function getInitialViewportY() {
+  // Keep ground (world Y=520) visible at ~85% of canvas height
+  return Math.max(0, GROUND_Y - canvasH * 0.85);
 }
 
 // ── Collapse animation ──

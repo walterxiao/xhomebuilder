@@ -28,77 +28,95 @@ function randBlock() {
   };
 }
 
-// Find the Y coordinate where a block landing at (bx, bx+bw) would rest.
-// Rule: new block must land on or touching the topmost block in the stack
-// (except the first block which lands on the ground).
+// ── Realistic stacking physics ──
+//
+// computeLandY: where a dropped block comes to rest (highest overlapping surface)
+// checkStackStability: full aggregate-COM check on the entire stack
+//   - sorts blocks top-to-bottom
+//   - at each level, computes combined center of mass of ALL blocks above that level
+//   - checks that COM falls within the physical support footprint at that level
+//   - a block can cantilever as long as the aggregate COM is still supported below
+//
 function computeLandY(stack, bx, bw, bh) {
   if (stack.length === 0) return GROUND_Y - bh;
 
-  // Find the highest occupied Y (topmost block's top surface)
   const stackTopY = Math.min(...stack.map(b => b.y));
 
-  // Find all blocks at the top level that the new block can land on
+  // Highest block that horizontally overlaps the new block
   let highestTop = GROUND_Y;
   for (const b of stack) {
-    const overlapL = Math.max(bx, b.x);
-    const overlapR = Math.min(bx + bw, b.x + b.w);
-    if (overlapR > overlapL + 1 && b.y < highestTop) {
-      highestTop = b.y;
-    }
+    const ol = Math.max(bx, b.x);
+    const or_ = Math.min(bx + bw, b.x + b.w);
+    if (or_ > ol + 1 && b.y < highestTop) highestTop = b.y;
   }
 
-  // Block must land at the level of the topmost block (touching it)
-  // Cap landing height so it can't fall lower than the top block's surface
+  // Block must touch the topmost block (no skipping to a lower gap)
   const capY = stackTopY - bh;
   return Math.min(highestTop - bh, capY);
 }
 
-// Check if new block is stable. Returns { stable, wobble }
-// wobble = true if it's barely stable (center of mass near edge)
-function checkStability(stack, nb) {
-  const nbCx = nb.x + nb.w / 2;
+function checkStackStability(stack) {
+  if (stack.length === 0) return { stable: true, wobblyIds: new Set() };
 
-  // Find all blocks that support nb (their top = nb.y + nb.h, overlap)
-  const supports = stack.filter(b => {
-    if (b === nb) return false;
-    const topOfB = b.y; // b.y is the top of b
-    // support means nb rests on b: nb.y + nb.h ≈ b.y (nb bottom = b top)
-    if (Math.abs((nb.y + nb.h) - b.y) > 2) return false;
-    const overlapL = Math.max(nb.x, b.x);
-    const overlapR = Math.min(nb.x + nb.w, b.x + b.w);
-    return overlapR > overlapL + 1;
-  });
+  // Sort topmost-first (ascending Y)
+  const sorted = [...stack].sort((a, b) => a.y - b.y);
 
-  // If resting on ground (no supports), always stable
-  if (supports.length === 0) {
-    // check if resting on ground
-    if (Math.abs(nb.y + nb.h - GROUND_Y) < 2) return { stable: true, wobble: false };
-    // floating — unstable
-    return { stable: false, wobble: false };
+  const wobblyIds = new Set();
+
+  for (let i = 0; i < sorted.length; i++) {
+    const block = sorted[i];
+
+    // Find blocks that physically support this block (directly below, overlapping)
+    const supports = [];
+    for (let j = i + 1; j < sorted.length; j++) {
+      const s = sorted[j];
+      if (Math.abs((block.y + block.h) - s.y) > 2) continue;
+      const ol = Math.max(block.x, s.x);
+      const or_ = Math.min(block.x + block.w, s.x + s.w);
+      if (or_ > ol + 1) supports.push({ s, ol, or_ });
+    }
+
+    // No support found — must be resting on ground
+    if (supports.length === 0) {
+      if (Math.abs(block.y + block.h - GROUND_Y) <= 2) continue; // on ground = fine
+      // Floating block → unstable
+      return { stable: false, wobblyIds, unstableBlockId: block.id, tipDir: 0 };
+    }
+
+    // Aggregate centre-of-mass of this block and everything above it
+    // (sorted[0..i] = all blocks at or above the current level)
+    let totalMass = 0, weightedX = 0;
+    for (let k = 0; k <= i; k++) {
+      const b = sorted[k];
+      const mass = b.w * b.h; // treat area as mass (uniform density)
+      totalMass += mass;
+      weightedX += (b.x + b.w / 2) * mass;
+    }
+    const comX = weightedX / totalMass;
+
+    // Physical support footprint = union of overlap regions with supporting blocks
+    let supL = supports[0].ol, supR = supports[0].or_;
+    for (const { ol, or_ } of supports) {
+      if (ol < supL) supL = ol;
+      if (or_ > supR) supR = or_;
+    }
+
+    // Stability test: aggregate COM must fall within support footprint
+    if (comX < supL) {
+      return { stable: false, wobblyIds, unstableBlockId: block.id, tipDir: -1 };
+    }
+    if (comX > supR) {
+      return { stable: false, wobblyIds, unstableBlockId: block.id, tipDir: 1 };
+    }
+
+    // Wobble: COM within 18% of support span from either edge
+    const supSpan = supR - supL;
+    if (supSpan > 0 && (comX - supL < supSpan * 0.18 || supR - comX < supSpan * 0.18)) {
+      wobblyIds.add(block.id);
+    }
   }
 
-  // Find support span
-  let supL = Infinity, supR = -Infinity;
-  for (const b of supports) {
-    const overlapL = Math.max(nb.x, b.x);
-    const overlapR = Math.min(nb.x + nb.w, b.x + b.w);
-    if (overlapL < supL) supL = overlapL;
-    if (overlapR > supR) supR = overlapR;
-  }
-
-  const supCenter = (supL + supR) / 2;
-  const supSpan = supR - supL;
-
-  // Center of mass must be within support span
-  if (nbCx < supL || nbCx > supR) {
-    return { stable: false, wobble: false };
-  }
-
-  // Wobble if within 15% of block width from edge of support
-  const wobbleThresh = nb.w * 0.15;
-  const wobble = (nbCx - supL < wobbleThresh) || (supR - nbCx < wobbleThresh);
-
-  return { stable: true, wobble };
+  return { stable: true, wobblyIds };
 }
 
 function getSession(id) {
@@ -159,7 +177,6 @@ function handleDrop(s, x, isAuto) {
   clearInterval(s.turnTimer);
 
   const block = s.currentBlock;
-  // Clamp x to valid range
   x = Math.max(0, Math.min(GAME_W - block.w, x));
 
   const landY = computeLandY(s.stack, x, block.w, block.h);
@@ -168,30 +185,33 @@ function handleDrop(s, x, isAuto) {
 
   const newBlock = {
     id: s.nextBlockId++,
-    x,
-    y: landY,
-    w: block.w,
-    h: block.h,
+    x, y: landY,
+    w: block.w, h: block.h,
     color: player.color,
     playerIdx,
     wobble: false
   };
 
-  // Check stability before adding to stack
-  const tempStack = [...s.stack, newBlock];
-  const stability = checkStability(tempStack, newBlock);
+  s.stack.push(newBlock);
 
-  if (!stability.stable) {
-    // Game over — add block briefly then collapse
+  // Full aggregate-COM stability check on the entire stack
+  const result = checkStackStability(s.stack);
+
+  // Propagate updated wobble flags to all blocks
+  for (const b of s.stack) b.wobble = result.wobblyIds.has(b.id);
+
+  const wobbleUpdates = s.stack.map(b => ({ id: b.id, wobble: b.wobble }));
+
+  if (!result.stable) {
     s.gameOver = true;
-    s.stack.push(newBlock);
     broadcast(s, {
       type: 'dropped',
-      block: newBlock,
-      landY,
+      block: newBlock, landY,
       stable: false,
-      playerIdx,
-      isAuto
+      unstableBlockId: result.unstableBlockId,
+      tipDir: result.tipDir,
+      wobbleUpdates,
+      playerIdx, isAuto
     });
     setTimeout(() => {
       broadcast(s, { type: 'game_over', loserIdx: playerIdx, loserName: player.name, stack: s.stack });
@@ -199,20 +219,14 @@ function handleDrop(s, x, isAuto) {
     return;
   }
 
-  newBlock.wobble = stability.wobble;
-  s.stack.push(newBlock);
-
   broadcast(s, {
     type: 'dropped',
-    block: newBlock,
-    landY,
+    block: newBlock, landY,
     stable: true,
-    wobble: stability.wobble,
-    playerIdx,
-    isAuto
+    wobbleUpdates,
+    playerIdx, isAuto
   });
 
-  // Move to next turn
   setTimeout(() => {
     if (!s.gameOver) {
       s.currentTurn = (s.currentTurn + 1) % s.players.length;

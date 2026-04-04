@@ -642,11 +642,22 @@ function handleMsg(msg) {
         startTime: performance.now(),
         duration: Math.min(800, Math.max(350, (endY - fromWorldY) * 0.55))
       };
+      // Capture msg fields before the async callback
+      const msgStable = msg.stable;
+      const msgUnstableId = msg.unstableBlockId;
+      const msgTipDir = msg.tipDir;
+      const msgWobbleUpdates = msg.wobbleUpdates;
       setTimeout(() => {
         stack.push(b);
-        if (b.stable === false) {
-          unstableBlockId = b.id;
-          tipDir = Math.random() > 0.5 ? 1 : -1;
+        // Apply updated wobble flags from server's aggregate-COM check
+        if (msgWobbleUpdates) {
+          const wMap = new Map(msgWobbleUpdates.map(u => [u.id, u.wobble]));
+          for (const sb of stack) if (wMap.has(sb.id)) sb.wobble = wMap.get(sb.id);
+        }
+        if (msgStable === false) {
+          // Server tells us which block actually caused the instability
+          unstableBlockId = msgUnstableId != null ? msgUnstableId : b.id;
+          tipDir = msgTipDir || (Math.random() > 0.5 ? 1 : -1);
           preCollapseStart = performance.now();
           preCollapse = true;
           shakeAmp = 8;

@@ -304,9 +304,16 @@ wss.on('connection', (ws) => {
       startTurn(sess);
 
     } else if (msg.type === 'slide_pos') {
-      // Update current slider position for auto-drop tracking
+      // Update current slider position and broadcast to all other viewers
       if (!sess || playerIdx !== sess.currentTurn) return;
       sess.sliderX = msg.x;
+      const posStr = JSON.stringify({ type: 'slide_pos', x: msg.x });
+      for (const p of sess.players) {
+        if (p.idx !== playerIdx && p.ws.readyState === 1) p.ws.send(posStr);
+      }
+      for (const o of sess.observers) {
+        if (o.readyState === 1) o.send(posStr);
+      }
 
     } else if (msg.type === 'drop') {
       if (!sess || playerIdx !== sess.currentTurn || sess.gameOver) return;
@@ -364,4 +371,15 @@ wss.on('connection', (ws) => {
   });
 });
 
-module.exports = { wss };
+function getSessionList() {
+  return Object.values(sessions).map(s => ({
+    id: s.id,
+    players: s.players.map(p => ({ name: p.name, color: p.color })),
+    started: s.started,
+    gameOver: s.gameOver,
+    blockCount: s.stack.length,
+    maxPlayers: MAX_PLAYERS
+  }));
+}
+
+module.exports = { wss, getSessionList };

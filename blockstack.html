@@ -31,8 +31,11 @@ html, body {
 
 /* ── ENTRY ── */
 #screen-entry {
-  gap: 20px;
+  gap: 16px;
   padding: 24px;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding-top: max(32px, env(safe-area-inset-top));
 }
 .entry-title {
   font-size: 2.4rem;
@@ -73,9 +76,17 @@ html, body {
   color: var(--text);
 }
 .btn.secondary:active { opacity: 0.7; }
-.or-divider { text-align: center; color: var(--muted); font-size: 0.85rem; }
-.session-input { display: flex; gap: 8px; }
-.session-input input { flex: 1; }
+.sessions-section { flex: 1; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 400px; min-height: 0; }
+.sessions-header { font-size: 0.8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
+.sessions-refresh { cursor: pointer; font-size: 1.1rem; padding: 4px; opacity: 0.7; line-height: 1; }
+.sessions-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.session-card { background: var(--surface); border: 1px solid #2a2a5a; border-radius: var(--radius); padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+.session-players { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.session-dots { display: flex; gap: 4px; margin-bottom: 2px; }
+.session-names { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-status { font-size: 0.75rem; color: var(--muted); }
+.no-sessions { color: var(--muted); font-size: 0.9rem; text-align: center; padding: 24px; }
+.btn.small { font-size: 0.85rem; padding: 8px 16px; flex-shrink: 0; }
 
 /* ── LOBBY ── */
 #screen-lobby { gap: 16px; padding: 24px; justify-content: flex-start; padding-top: 60px; }
@@ -249,12 +260,14 @@ html, body {
   <div class="entry-sub">Take turns dropping blocks. Don't topple the tower!</div>
   <div class="entry-form">
     <input id="entry-name" type="text" placeholder="Your name" maxlength="20" autocomplete="off">
-    <button class="btn" onclick="createGame()">Create Game</button>
-    <div class="or-divider">— or join existing —</div>
-    <div class="session-input">
-      <input id="join-code" type="text" placeholder="Session code" maxlength="8" autocomplete="off" style="text-transform:uppercase">
-      <button class="btn" onclick="joinGame()">Join</button>
+    <button class="btn" onclick="createGame()">Create New Game</button>
+  </div>
+  <div class="sessions-section">
+    <div class="sessions-header">
+      <span>Active Games</span>
+      <span class="sessions-refresh" onclick="loadSessions()" title="Refresh">↻</span>
     </div>
+    <div id="sessions-list" class="sessions-list"><div class="no-sessions">Loading…</div></div>
   </div>
 </div>
 
@@ -321,6 +334,7 @@ let stack = [];
 let currentTurn = -1;
 let currentBlock = null;
 let sliderX = 0;
+let remoteSliderX = 0; // slider position of the current-turn player (for other viewers)
 let sliderDir = 1;
 let sliderSpeed = 2.5; // px/frame at canvas scale
 let timerLeft = 15;
@@ -350,17 +364,21 @@ window.addEventListener('load', () => {
   if (savedName) document.getElementById('entry-name').value = savedName;
 
   document.getElementById('entry-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('join-code').focus();
-  });
-  document.getElementById('join-code').addEventListener('keydown', e => {
-    if (e.key === 'Enter') joinGame();
+    if (e.key === 'Enter') createGame();
   });
   document.getElementById('chat-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') sendChat();
   });
 
+  // Tap canvas to drop (mobile-friendly)
+  canvas.addEventListener('click', () => {
+    if (myIdx === currentTurn && !gameOver && !fallingAnim) dropBlock();
+  });
+
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
+  loadSessions();
+  setInterval(loadSessions, 5000);
 });
 
 function resizeCanvas() {
@@ -406,12 +424,47 @@ function createGame() {
   connect(() => wsSend({ type: 'create', name }));
 }
 
-function joinGame() {
+function joinGame(sid) {
   const name = document.getElementById('entry-name').value.trim() || 'Player';
-  const code = document.getElementById('join-code').value.trim().toLowerCase();
-  if (!code) { showToast('Enter a session code'); return; }
+  if (!sid) { showToast('Select a game to join'); return; }
   localStorage.setItem('phub_name', name);
-  connect(() => wsSend({ type: 'join', sessionId: code, name }));
+  connect(() => wsSend({ type: 'join', sessionId: sid, name }));
+}
+
+async function loadSessions() {
+  try {
+    const res = await fetch('/api/blockstack/sessions');
+    if (!res.ok) return;
+    renderSessionList(await res.json());
+  } catch (_) {}
+}
+
+function renderSessionList(list) {
+  const el = document.getElementById('sessions-list');
+  if (!el) return;
+  if (!list || list.length === 0) {
+    el.innerHTML = '<div class="no-sessions">No active games yet.<br>Create one to get started!</div>';
+    return;
+  }
+  el.innerHTML = list.map(s => {
+    const statusText = s.gameOver
+      ? 'Finished'
+      : s.started
+        ? `In progress · ${s.blockCount} block${s.blockCount !== 1 ? 's' : ''}`
+        : `Waiting · ${s.players.length}/${s.maxPlayers} players`;
+    const dots = s.players.map(p =>
+      `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color}"></span>`
+    ).join('');
+    const names = s.players.map(p => escHtml(p.name)).join(', ') || 'Empty';
+    return `<div class="session-card">
+      <div class="session-players">
+        <div class="session-dots">${dots}</div>
+        <div class="session-names">${names}</div>
+        <div class="session-status">${statusText}</div>
+      </div>
+      <button class="btn small" onclick="joinGame('${s.id}')">Join</button>
+    </div>`;
+  }).join('');
 }
 
 function startGame() {
@@ -447,6 +500,7 @@ function resetLocalState() {
   currentTurn = -1;
   currentBlock = null;
   sliderX = 0;
+  remoteSliderX = 0;
   sliderDir = 1;
   viewportY = 0;
   targetViewportY = 0;
@@ -540,9 +594,14 @@ function handleMsg(msg) {
       currentBlock = msg.block;
       timerLeft = msg.timeLeft;
       sliderX = 0;
+      remoteSliderX = 0;
       sliderDir = 1;
       updateTopBar();
       updateDropBtn();
+      break;
+
+    case 'slide_pos':
+      remoteSliderX = msg.x;
       break;
 
     case 'timer':
@@ -552,15 +611,16 @@ function handleMsg(msg) {
 
     case 'dropped': {
       const b = msg.block;
-      // Animate the fall
-      const startY = -b.h; // off-screen top in canvas space (adjusted for viewport)
+      // Start fall from where the slider was (canvas Y=12 → world Y = viewportY+12)
+      const SLIDER_Y = 12;
+      const fromWorldY = viewportY + SLIDER_Y;
       const endY = b.y;
       fallingAnim = {
         block: b,
-        fromY: startY,
+        fromY: fromWorldY,
         toY: endY,
         startTime: performance.now(),
-        duration: Math.min(800, Math.max(300, (endY + viewportY + b.h) * 0.6))
+        duration: Math.min(800, Math.max(350, (endY - fromWorldY) * 0.55))
       };
       // Add to stack after anim
       setTimeout(() => {
@@ -825,32 +885,46 @@ function draw(ts) {
     ctx.restore();
   }
 
-  // Slider (current block preview) — draw for current player or observers
+  // Slider block — drawn at fixed canvas Y (not world space), always visible
   if (!gameOver && currentBlock && !fallingAnim) {
     const isMyTurn = myIdx === currentTurn;
-    const drawSlider = isMyTurn || isObserver;
-    if (drawSlider) {
-      const bw = currentBlock.w, bh = currentBlock.h;
-      const sx = isMyTurn ? sliderX : (GAME_W - bw) / 2; // observers see it centered
-      const by = -bh - 10; // just above top of viewport — world coords
-      const cv = worldToCanvas(sx + bw / 2, by + bh / 2);
-      ctx.save();
-      ctx.globalAlpha = 0.6;
-      ctx.translate(cv.x, cv.y);
-      const col = players[currentTurn] ? players[currentTurn].color : '#888';
-      drawBlock(ctx, -bw / 2, -bh / 2, bw, bh, col);
-      ctx.restore();
+    const col = players[currentTurn] ? players[currentTurn].color : '#888';
+    const bw = currentBlock.w, bh = currentBlock.h;
+    const sx = isMyTurn ? sliderX : remoteSliderX;
+    const SLIDER_Y = 12;
+    const canvasBlockX = offsetX + sx;
 
-      // Drop shadow / ghost
-      if (isMyTurn) {
-        const landY = computeLandYClient(sx, bw, bh);
-        const gcv = worldToCanvas(sx + bw / 2, landY + bh / 2);
-        ctx.save();
-        ctx.globalAlpha = 0.2;
-        ctx.translate(gcv.x, gcv.y);
-        drawBlock(ctx, -bw / 2, -bh / 2, bw, bh, col);
-        ctx.restore();
-      }
+    ctx.save();
+    if (isMyTurn) {
+      ctx.globalAlpha = 0.95;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 16;
+    } else {
+      ctx.globalAlpha = 0.6;
+    }
+    drawBlock(ctx, canvasBlockX, SLIDER_Y, bw, bh, col);
+    ctx.restore();
+
+    // Ghost landing preview
+    const landY = computeLandYClient(sx, bw, bh);
+    const gcv = worldToCanvas(sx, landY);
+    if (gcv.y > SLIDER_Y + bh + 20 && gcv.y < canvasH - bh) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      drawBlock(ctx, gcv.x, gcv.y, bw, bh, col);
+      ctx.restore();
+      // Dashed guide line
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = 0.12;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.moveTo(canvasBlockX + bw / 2, SLIDER_Y + bh);
+      ctx.lineTo(gcv.x + bw / 2, gcv.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
     }
   }
 

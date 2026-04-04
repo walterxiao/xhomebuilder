@@ -26,6 +26,12 @@ const PAGES = {
 
 const httpServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
+  if (urlPath === '/api/blockstack/sessions') {
+    const data = JSON.stringify(blockstack.getSessionList());
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(data);
+    return;
+  }
   const file = PAGES[urlPath];
   if (!file) { res.writeHead(404); res.end('Not found'); return; }
   fs.readFile(path.join(__dirname, file), (err, data) => {

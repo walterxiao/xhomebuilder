@@ -28,22 +28,29 @@ function randBlock() {
   };
 }
 
-// Find the Y coordinate where a block landing at (bx, bx+bw) would rest
-// Returns the top-Y of the placed block
+// Find the Y coordinate where a block landing at (bx, bx+bw) would rest.
+// Rule: new block must land on or touching the topmost block in the stack
+// (except the first block which lands on the ground).
 function computeLandY(stack, bx, bw, bh) {
-  let highestTop = GROUND_Y; // ground surface
+  if (stack.length === 0) return GROUND_Y - bh;
+
+  // Find the highest occupied Y (topmost block's top surface)
+  const stackTopY = Math.min(...stack.map(b => b.y));
+
+  // Find all blocks at the top level that the new block can land on
+  let highestTop = GROUND_Y;
   for (const b of stack) {
-    // Check horizontal overlap
     const overlapL = Math.max(bx, b.x);
     const overlapR = Math.min(bx + bw, b.x + b.w);
-    if (overlapR > overlapL + 1) {
-      // overlaps — check if this block's top is higher
-      if (b.y < highestTop) {
-        highestTop = b.y;
-      }
+    if (overlapR > overlapL + 1 && b.y < highestTop) {
+      highestTop = b.y;
     }
   }
-  return highestTop - bh;
+
+  // Block must land at the level of the topmost block (touching it)
+  // Cap landing height so it can't fall lower than the top block's surface
+  const capY = stackTopY - bh;
+  return Math.min(highestTop - bh, capY);
 }
 
 // Check if new block is stable. Returns { stable, wobble }

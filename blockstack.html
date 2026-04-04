@@ -352,7 +352,9 @@ let shakeDx = 0, shakeDy = 0;
 // Falling block animation
 let fallingAnim = null; // { block, fromY, toY, startTime, duration }
 let squishAnim = null;  // { block, startTime }
-let collapseAnim = null; // { particles, startTime }
+let collapseAnim = null; // { particles, startTime, duration }
+let preCollapse = false; // intense wobble before scatter
+let flashAnim = null;   // { startTime, duration } red flash overlay
 let wobbleTime = 0;
 
 // ── Init ──
@@ -509,12 +511,14 @@ function resetLocalState() {
   sliderX = 0;
   remoteSliderX = 0;
   sliderDir = 1;
-  viewportY = 0;     // will be corrected by getInitialViewportY after canvas is sized
+  viewportY = 0;
   targetViewportY = 0;
   shakeAmp = 0;
   fallingAnim = null;
   squishAnim = null;
   collapseAnim = null;
+  preCollapse = false;
+  flashAnim = null;
   gameOver = false;
   isObserver = false;
   timerLeft = 15;
@@ -593,6 +597,7 @@ function handleMsg(msg) {
       stack = [];
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
+      preCollapse = false; flashAnim = null;
       showScreen('screen-game'); // resizes canvas first
       { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       updateDropBtn();
@@ -621,7 +626,6 @@ function handleMsg(msg) {
 
     case 'dropped': {
       const b = msg.block;
-      // Start fall from where the slider was (canvas Y=12 → world Y = viewportY+12)
       const SLIDER_Y = 12;
       const fromWorldY = viewportY + SLIDER_Y;
       const endY = b.y;
@@ -632,12 +636,14 @@ function handleMsg(msg) {
         startTime: performance.now(),
         duration: Math.min(800, Math.max(350, (endY - fromWorldY) * 0.55))
       };
-      // Add to stack after anim
       setTimeout(() => {
         stack.push(b);
-        if (b.stable !== false) {
+        if (b.stable === false) {
+          // Pre-collapse: intense wobble warning before server triggers game_over
+          preCollapse = true;
+          shakeAmp = 8;
+        } else {
           squishAnim = { block: b, startTime: performance.now(), duration: 250 };
-          // Update viewport
           updateTargetViewport();
         }
         fallingAnim = null;
@@ -645,29 +651,29 @@ function handleMsg(msg) {
       break;
     }
 
-    case 'game_over':
+    case 'game_over': {
       gameOver = true;
       currentTurn = -1;
       updateDropBtn();
-      // Start collapse animation
       startCollapseAnim();
-      // Show over screen after anim
+      const loserName = msg.loserName || 'Someone';
+      const heightCount = msg.stack ? msg.stack.length : stack.length;
       setTimeout(() => {
-        const loserName = msg.loserName || 'Someone';
-        const height = computeStackHeight();
         document.getElementById('over-title').textContent = '💥 Tower Collapsed!';
         document.getElementById('over-sub').textContent = `${loserName} toppled the tower`;
-        document.getElementById('over-height').textContent = `Stack height: ${height} blocks`;
+        document.getElementById('over-height').textContent = `Stack height: ${heightCount} blocks`;
         document.getElementById('play-again-btn').style.display = isHost ? 'block' : 'none';
         showScreen('screen-over');
-      }, 2800);
+      }, 3500);
       break;
+    }
 
     case 'play_again':
       players = msg.players;
       stack = [];
       gameOver = false;
       fallingAnim = null; squishAnim = null; collapseAnim = null;
+      preCollapse = false; flashAnim = null;
       showScreen('screen-game'); // resizes canvas first
       { const iv = getInitialViewportY(); viewportY = iv; targetViewportY = iv; }
       updateDropBtn();
@@ -779,22 +785,50 @@ function getInitialViewportY() {
   return GROUND_Y - canvasH + 20;
 }
 
+// ── Slider constraint: new block must touch the topmost block ──
+function getSliderConstraint() {
+  if (!currentBlock || stack.length === 0) return { min: 0, max: GAME_W - (currentBlock ? currentBlock.w : 0) };
+  const topY = getStackTopY();
+  // All blocks at the top level
+  const topBlocks = stack.filter(b => Math.abs(b.y - topY) < 2);
+  if (topBlocks.length === 0) return { min: 0, max: GAME_W - currentBlock.w };
+  const bw = currentBlock.w;
+  // Block must overlap at least one top block horizontally
+  let minX = Infinity, maxX = -Infinity;
+  for (const b of topBlocks) {
+    minX = Math.min(minX, b.x - bw + 2);
+    maxX = Math.max(maxX, b.x + b.w - 2);
+  }
+  return { min: Math.max(0, minX), max: Math.min(GAME_W - bw, maxX) };
+}
+
 // ── Collapse animation ──
 function startCollapseAnim() {
-  const particles = stack.map(b => ({
-    x: b.x + b.w / 2,
-    y: b.y + b.h / 2,
-    w: b.w,
-    h: b.h,
-    color: b.color,
-    vx: (Math.random() - 0.5) * 400,
-    vy: -Math.random() * 300 - 100,
-    rot: 0,
-    rotV: (Math.random() - 0.5) * 8,
-    opacity: 1
-  }));
-  collapseAnim = { particles, startTime: performance.now(), duration: 2000 };
-  shakeAmp = 16;
+  preCollapse = false;
+  flashAnim = { startTime: performance.now(), duration: 700 };
+  shakeAmp = 26;
+
+  const stackTopY = getStackTopY();
+  const stackHeight = Math.max(1, GROUND_Y - stackTopY);
+
+  // Convert blocks to canvas-space particles so they stay visible during collapse
+  const particles = stack.map(b => {
+    const cv = worldToCanvas(b.x + b.w / 2, b.y + b.h / 2);
+    const relH = (GROUND_Y - b.y) / stackHeight; // 0=ground, 1=top
+    const side = Math.random() > 0.5 ? 1 : -1;
+    return {
+      x: cv.x, y: cv.y,
+      w: b.w, h: b.h,
+      color: b.color,
+      vx: side * (80 + relH * 280) * (0.6 + Math.random()),
+      vy: -(60 + relH * 220) * (0.5 + Math.random()),
+      rot: 0,
+      rotV: side * (5 + Math.random() * 9),
+      opacity: 1
+    };
+  });
+
+  collapseAnim = { particles, startTime: performance.now(), duration: 3000 };
   stack = [];
 }
 
@@ -814,12 +848,12 @@ function renderLoop(ts) {
     shakeDy = (Math.random() - 0.5) * shakeAmp;
   } else { shakeDx = 0; shakeDy = 0; }
 
-  // Advance slider (only for current player)
+  // Advance slider (only for current player), constrained to overlap top of stack
   if (!gameOver && currentBlock && myIdx === currentTurn && !fallingAnim) {
-    const maxX = GAME_W - currentBlock.w;
+    const c = getSliderConstraint();
     sliderX += sliderDir * sliderSpeed;
-    if (sliderX >= maxX) { sliderX = maxX; sliderDir = -1; }
-    else if (sliderX <= 0) { sliderX = 0; sliderDir = 1; }
+    if (sliderX >= c.max) { sliderX = c.max; sliderDir = -1; }
+    else if (sliderX <= c.min) { sliderX = c.min; sliderDir = 1; }
     wsSend({ type: 'slide_pos', x: Math.round(sliderX) });
   }
 
@@ -868,9 +902,11 @@ function draw(ts) {
       if (t >= 1) squishAnim = null;
     }
 
-    // Wobble
-    if (b.wobble) {
-      const angle = Math.sin(wobbleTime * 4 + b.id * 0.7) * 0.035;
+    // Wobble — intensifies during pre-collapse warning
+    if (b.wobble || preCollapse) {
+      const freq = preCollapse ? 12 : 4;
+      const amp = preCollapse ? 0.14 : 0.035;
+      const angle = Math.sin(wobbleTime * freq + b.id * 0.9) * amp;
       const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
       ctx.save();
       ctx.translate(cv.x, cv.y);
@@ -972,23 +1008,48 @@ function draw(ts) {
   ctx.stroke();
   ctx.restore();
 
-  // Collapse animation
+  // Red flash overlay (on collapse)
+  if (flashAnim) {
+    const ft = Math.min(1, (now - flashAnim.startTime) / flashAnim.duration);
+    if (ft >= 1) { flashAnim = null; } else {
+      const alpha = (1 - ft) * 0.45;
+      ctx.save();
+      ctx.fillStyle = `rgba(255,40,40,${alpha})`;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+      ctx.restore();
+    }
+  }
+
+  // Pre-collapse "UNSTABLE!" warning text
+  if (preCollapse) {
+    const pulse = 0.65 + 0.35 * Math.abs(Math.sin(wobbleTime * 8));
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.font = `bold ${Math.round(canvasW * 0.075)}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff3333';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 20;
+    ctx.fillText('⚠ UNSTABLE!', canvasW / 2, canvasH / 2);
+    ctx.restore();
+  }
+
+  // Collapse scatter animation — particles stored in canvas-space
   if (collapseAnim) {
     const elapsed = now - collapseAnim.startTime;
     const dt = 1 / 60;
     for (const p of collapseAnim.particles) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 600 * dt; // gravity
+      p.vy += 560 * dt; // gravity in canvas-space (px/s²)
       p.rot += p.rotV * dt;
       p.opacity = Math.max(0, 1 - elapsed / collapseAnim.duration);
     }
     for (const p of collapseAnim.particles) {
       if (p.opacity <= 0) continue;
-      const cv = worldToCanvas(p.x, p.y);
       ctx.save();
       ctx.globalAlpha = p.opacity;
-      ctx.translate(cv.x, cv.y);
+      ctx.translate(p.x, p.y); // canvas-space directly — always visible
       ctx.rotate(p.rot);
       drawBlock(ctx, -p.w / 2, -p.h / 2, p.w, p.h, p.color);
       ctx.restore();

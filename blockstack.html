@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Block Stacker</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --accent: #e94560;
+  --text: #eaeaea;
+  --muted: #888;
+  --radius: 12px;
+}
+
+html, body {
+  height: 100%; height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+}
+
+/* ── SCREENS ── */
+.screen { display: none; width: 100%; height: 100%; height: 100dvh; flex-direction: column; align-items: center; justify-content: center; }
+.screen.active { display: flex; }
+
+/* ── ENTRY ── */
+#screen-entry {
+  gap: 20px;
+  padding: 24px;
+}
+.entry-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(233,69,96,0.5);
+}
+.entry-sub { color: var(--muted); font-size: 0.9rem; }
+.entry-form { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 340px; }
+.entry-form input {
+  background: var(--surface);
+  border: 2px solid #333;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 1rem;
+  padding: 12px 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.entry-form input:focus { border-color: var(--accent); }
+.entry-form input::placeholder { color: var(--muted); }
+.btn {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 12px 20px;
+  transition: transform 0.1s, opacity 0.2s;
+}
+.btn:active { transform: scale(0.96); }
+.btn.secondary {
+  background: var(--surface);
+  border: 2px solid #444;
+  color: var(--text);
+}
+.btn.secondary:active { opacity: 0.7; }
+.or-divider { text-align: center; color: var(--muted); font-size: 0.85rem; }
+.session-input { display: flex; gap: 8px; }
+.session-input input { flex: 1; }
+
+/* ── LOBBY ── */
+#screen-lobby { gap: 16px; padding: 24px; justify-content: flex-start; padding-top: 60px; }
+.lobby-title { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+.session-id-box {
+  background: var(--surface);
+  border: 2px solid #333;
+  border-radius: var(--radius);
+  padding: 12px 20px;
+  text-align: center;
+  width: 100%;
+  max-width: 340px;
+}
+.session-id-box .label { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+.session-id-box .code { font-size: 1.6rem; font-weight: 900; letter-spacing: 4px; color: var(--accent); }
+.player-list { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 8px; }
+.player-chip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.player-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.player-chip-name { font-weight: 600; }
+.player-chip-you { font-size: 0.75rem; color: var(--muted); margin-left: auto; }
+.lobby-hint { font-size: 0.8rem; color: var(--muted); text-align: center; max-width: 300px; }
+
+/* ── GAME ── */
+#screen-game {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+#top-bar {
+  height: 56px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  border-bottom: 2px solid #222;
+  z-index: 10;
+}
+#turn-indicator {
+  flex: 1;
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#timer-display {
+  font-size: 1.2rem;
+  font-weight: 900;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#timer-display.urgent { color: var(--accent); animation: pulse 0.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#game-canvas { display: block; touch-action: none; }
+
+#bottom-bar {
+  height: 72px;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  gap: 12px;
+  flex-shrink: 0;
+  border-top: 2px solid #222;
+}
+#drop-btn {
+  flex-shrink: 0;
+  width: 90px;
+  height: 48px;
+  font-size: 1.1rem;
+  border-radius: 24px;
+}
+#drop-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+#chat-input-wrap { flex: 1; display: flex; gap: 8px; }
+#chat-input {
+  flex: 1;
+  background: var(--bg);
+  border: 2px solid #333;
+  border-radius: 20px;
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 8px 14px;
+  outline: none;
+}
+#chat-input:focus { border-color: #555; }
+#chat-send-btn { width: 44px; height: 44px; border-radius: 50%; font-size: 1rem; padding: 0; }
+
+/* Chat overlay */
+#chat-overlay {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 5;
+}
+.chat-msg {
+  background: rgba(0,0,0,0.6);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  color: #fff;
+  opacity: 1;
+  transition: opacity 1s ease;
+  max-width: 90%;
+}
+.chat-msg.fading { opacity: 0; }
+
+/* ── OVER SCREEN ── */
+#screen-over { gap: 20px; padding: 24px; }
+.over-title { font-size: 2rem; font-weight: 800; }
+.over-sub { color: var(--muted); font-size: 1rem; text-align: center; }
+.over-stack-info { font-size: 1.1rem; font-weight: 600; }
+
+/* Observer badge */
+#obs-badge {
+  position: absolute;
+  top: 64px;
+  right: 8px;
+  background: rgba(0,0,0,0.7);
+  color: #aaa;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  z-index: 20;
+  display: none;
+}
+#obs-badge.visible { display: block; }
+
+/* Error toast */
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff; border-radius: 20px;
+  padding: 10px 20px; font-size: 0.9rem; z-index: 1000;
+  opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ENTRY SCREEN -->
+<div id="screen-entry" class="screen active">
+  <div class="entry-title">🧱 Block Stacker</div>
+  <div class="entry-sub">Take turns dropping blocks. Don't topple the tower!</div>
+  <div class="entry-form">
+    <input id="entry-name" type="text" placeholder="Your name" maxlength="20" autocomplete="off">
+    <button class="btn" onclick="createGame()">Create Game</button>
+    <div class="or-divider">— or join existing —</div>
+    <div class="session-input">
+      <input id="join-code" type="text" placeholder="Session code" maxlength="8" autocomplete="off" style="text-transform:uppercase">
+      <button class="btn" onclick="joinGame()">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOBBY SCREEN -->
+<div id="screen-lobby" class="screen">
+  <div class="lobby-title">Waiting Room</div>
+  <div class="session-id-box">
+    <div class="label">Share this code with friends</div>
+    <div class="code" id="lobby-code">------</div>
+  </div>
+  <div class="player-list" id="lobby-players"></div>
+  <div class="lobby-hint">Up to 6 players. Round-robin turns. You can join mid-game!</div>
+  <button class="btn" id="start-btn" onclick="startGame()">Start Game</button>
+  <button class="btn secondary" onclick="startGame()" id="join-start-btn" style="display:none">Start (You're Player 1)</button>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="screen-game" class="screen">
+  <div id="top-bar">
+    <div id="turn-indicator">Waiting…</div>
+    <div id="timer-display">15</div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="game-canvas"></canvas>
+    <div id="obs-badge">👁 Observing</div>
+    <div id="chat-overlay"></div>
+  </div>
+  <div id="bottom-bar">
+    <button class="btn" id="drop-btn" onclick="dropBlock()" disabled>DROP</button>
+    <div id="chat-input-wrap">
+      <input id="chat-input" type="text" placeholder="Chat…" maxlength="80" autocomplete="off">
+      <button class="btn secondary" id="chat-send-btn" onclick="sendChat()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER SCREEN -->
+<div id="screen-over" class="screen">
+  <div class="over-title" id="over-title">Game Over!</div>
+  <div class="over-sub" id="over-sub"></div>
+  <div class="over-stack-info" id="over-height"></div>
+  <button class="btn" id="play-again-btn" onclick="playAgain()" style="display:none">Play Again</button>
+  <button class="btn secondary" onclick="backToEntry()">Back to Menu</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+// ── Constants ──
+const GAME_W = 400;
+const GROUND_Y = 520;
+const COLORS = ['#e74c3c','#3498db','#2ecc71','#f1c40f','#9b59b6','#1abc9c'];
+
+// ── State ──
+let ws = null;
+let sessionId = null;
+let myIdx = -1;
+let myColor = null;
+let isObserver = false;
+let isHost = false;
+let players = [];
+let stack = [];
+let currentTurn = -1;
+let currentBlock = null;
+let sliderX = 0;
+let sliderDir = 1;
+let sliderSpeed = 2.5; // px/frame at canvas scale
+let timerLeft = 15;
+let gameOver = false;
+let animFrame = null;
+
+// Canvas / rendering
+let canvas, ctx;
+let canvasW, canvasH;
+let viewportY = 0;       // how many px we've scrolled up (positive = up)
+let targetViewportY = 0;
+let shakeAmp = 0;
+let shakeDx = 0, shakeDy = 0;
+
+// Falling block animation
+let fallingAnim = null; // { block, fromY, toY, startTime, duration }
+let squishAnim = null;  // { block, startTime }
+let collapseAnim = null; // { particles, startTime }
+let wobbleTime = 0;
+
+// ── Init ──
+window.addEventListener('load', () => {
+  canvas = document.getElementById('game-canvas');
+  ctx = canvas.getContext('2d');
+
+  const savedName = localStorage.getItem('phub_name');
+  if (savedName) document.getElementById('entry-name').value = savedName;
+
+  document.getElementById('entry-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('join-code').focus();
+  });
+  document.getElementById('join-code').addEventListener('keydown', e => {
+    if (e.key === 'Enter') joinGame();
+  });
+  document.getElementById('chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendChat();
+  });
+
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+});
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvasW = wrap.clientWidth;
+  canvasH = wrap.clientHeight;
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  if (!animFrame) renderLoop();
+}
+
+// ── Screens ──
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showToast(msg, dur = 3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ── WebSocket ──
+function connect(onOpen) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/blockstack`);
+  ws.onopen = onOpen;
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onclose = () => { if (!gameOver) showToast('Disconnected'); };
+  ws.onerror = () => showToast('Connection error');
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ── Entry Actions ──
+function createGame() {
+  const name = document.getElementById('entry-name').value.trim() || 'Player 1';
+  localStorage.setItem('phub_name', name);
+  connect(() => wsSend({ type: 'create', name }));
+}
+
+function joinGame() {
+  const name = document.getElementById('entry-name').value.trim() || 'Player';
+  const code = document.getElementById('join-code').value.trim().toLowerCase();
+  if (!code) { showToast('Enter a session code'); return; }
+  localStorage.setItem('phub_name', name);
+  connect(() => wsSend({ type: 'join', sessionId: code, name }));
+}
+
+function startGame() {
+  wsSend({ type: 'start' });
+}
+
+function dropBlock() {
+  if (myIdx !== currentTurn || gameOver) return;
+  wsSend({ type: 'drop', x: Math.round(sliderX) });
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  wsSend({ type: 'chat', text });
+}
+
+function playAgain() {
+  wsSend({ type: 'play_again' });
+}
+
+function backToEntry() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  resetLocalState();
+  showScreen('screen-entry');
+}
+
+function resetLocalState() {
+  stack = [];
+  players = [];
+  currentTurn = -1;
+  currentBlock = null;
+  sliderX = 0;
+  sliderDir = 1;
+  viewportY = 0;
+  targetViewportY = 0;
+  shakeAmp = 0;
+  fallingAnim = null;
+  squishAnim = null;
+  collapseAnim = null;
+  gameOver = false;
+  isObserver = false;
+  timerLeft = 15;
+}
+
+// ── Message Handlers ──
+function handleMsg(msg) {
+  switch (msg.type) {
+    case 'created':
+      sessionId = msg.sessionId;
+      myIdx = msg.playerIdx;
+      myColor = msg.color;
+      isHost = true;
+      document.getElementById('lobby-code').textContent = msg.sessionId.toUpperCase();
+      showScreen('screen-lobby');
+      document.getElementById('start-btn').style.display = 'block';
+      break;
+
+    case 'joined':
+      sessionId = msg.sessionId;
+      myIdx = msg.playerIdx;
+      myColor = msg.color;
+      isHost = myIdx === 0;
+      document.getElementById('lobby-code').textContent = msg.sessionId.toUpperCase();
+      document.getElementById('start-btn').style.display = isHost ? 'block' : 'none';
+      if (msg.started) {
+        // Mid-game join
+        players = msg.players;
+        stack = msg.stack || [];
+        currentTurn = msg.currentTurn;
+        currentBlock = msg.currentBlock;
+        timerLeft = msg.timeLeft;
+        showScreen('screen-game');
+        updateTopBar();
+        updateDropBtn();
+        if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
+      } else {
+        showScreen('screen-lobby');
+      }
+      break;
+
+    case 'obs_joined':
+      isObserver = true;
+      players = msg.players;
+      stack = msg.stack || [];
+      currentTurn = msg.currentTurn;
+      currentBlock = msg.currentBlock;
+      timerLeft = msg.timeLeft || 15;
+      document.getElementById('obs-badge').classList.add('visible');
+      document.getElementById('drop-btn').disabled = true;
+      if (msg.started) {
+        showScreen('screen-game');
+        updateTopBar();
+        if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
+      } else {
+        document.getElementById('lobby-code').textContent = (msg.sessionId || '').toUpperCase();
+        showScreen('screen-lobby');
+      }
+      break;
+
+    case 'lobby':
+      players = msg.players;
+      renderLobby();
+      if (msg.started && currentTurn < 0) {
+        currentTurn = msg.currentTurn;
+        currentBlock = msg.currentBlock;
+        stack = msg.stack || [];
+      }
+      break;
+
+    case 'start':
+      players = msg.players;
+      stack = [];
+      viewportY = 0; targetViewportY = 0;
+      gameOver = false;
+      fallingAnim = null; squishAnim = null; collapseAnim = null;
+      showScreen('screen-game');
+      updateDropBtn();
+      if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
+      break;
+
+    case 'new_turn':
+      currentTurn = msg.playerIdx;
+      currentBlock = msg.block;
+      timerLeft = msg.timeLeft;
+      sliderX = 0;
+      sliderDir = 1;
+      updateTopBar();
+      updateDropBtn();
+      break;
+
+    case 'timer':
+      timerLeft = msg.timeLeft;
+      updateTimerDisplay();
+      break;
+
+    case 'dropped': {
+      const b = msg.block;
+      // Animate the fall
+      const startY = -b.h; // off-screen top in canvas space (adjusted for viewport)
+      const endY = b.y;
+      fallingAnim = {
+        block: b,
+        fromY: startY,
+        toY: endY,
+        startTime: performance.now(),
+        duration: Math.min(800, Math.max(300, (endY + viewportY + b.h) * 0.6))
+      };
+      // Add to stack after anim
+      setTimeout(() => {
+        stack.push(b);
+        if (b.stable !== false) {
+          squishAnim = { block: b, startTime: performance.now(), duration: 250 };
+          // Update viewport
+          updateTargetViewport();
+        }
+        fallingAnim = null;
+      }, fallingAnim.duration);
+      break;
+    }
+
+    case 'game_over':
+      gameOver = true;
+      currentTurn = -1;
+      updateDropBtn();
+      // Start collapse animation
+      startCollapseAnim();
+      // Show over screen after anim
+      setTimeout(() => {
+        const loserName = msg.loserName || 'Someone';
+        const height = computeStackHeight();
+        document.getElementById('over-title').textContent = '💥 Tower Collapsed!';
+        document.getElementById('over-sub').textContent = `${loserName} toppled the tower`;
+        document.getElementById('over-height').textContent = `Stack height: ${height} blocks`;
+        document.getElementById('play-again-btn').style.display = isHost ? 'block' : 'none';
+        showScreen('screen-over');
+      }, 2800);
+      break;
+
+    case 'play_again':
+      players = msg.players;
+      stack = [];
+      viewportY = 0; targetViewportY = 0;
+      gameOver = false;
+      fallingAnim = null; squishAnim = null; collapseAnim = null;
+      showScreen('screen-game');
+      updateDropBtn();
+      break;
+
+    case 'chat':
+      addChatMsg(msg.name, msg.text);
+      break;
+
+    case 'error':
+      showToast(msg.msg || 'Error');
+      break;
+  }
+}
+
+// ── Lobby rendering ──
+function renderLobby() {
+  const list = document.getElementById('lobby-players');
+  list.innerHTML = '';
+  for (const p of players) {
+    const div = document.createElement('div');
+    div.className = 'player-chip';
+    div.innerHTML = `<div class="player-dot" style="background:${p.color}"></div>
+      <div class="player-chip-name">${escHtml(p.name)}</div>
+      ${p.idx === myIdx ? '<div class="player-chip-you">You</div>' : ''}`;
+    list.appendChild(div);
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Top bar / UI ──
+function updateTopBar() {
+  const indicator = document.getElementById('turn-indicator');
+  if (gameOver) { indicator.textContent = 'Game Over'; return; }
+  if (currentTurn < 0 || !players[currentTurn]) { indicator.textContent = 'Waiting…'; return; }
+  const p = players[currentTurn];
+  const isMe = p.idx === myIdx;
+  indicator.innerHTML = `<span style="color:${p.color};font-weight:900">${escHtml(p.name)}</span>${isMe ? ' — your turn!' : "'s turn"}`;
+  updateTimerDisplay();
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('timer-display');
+  el.textContent = timerLeft;
+  el.classList.toggle('urgent', timerLeft <= 5);
+}
+
+function updateDropBtn() {
+  const btn = document.getElementById('drop-btn');
+  const isMyTurn = !isObserver && myIdx === currentTurn && !gameOver;
+  btn.disabled = !isMyTurn;
+}
+
+// ── Chat ──
+function addChatMsg(name, text) {
+  const overlay = document.getElementById('chat-overlay');
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+  div.textContent = `${name}: ${text}`;
+  overlay.appendChild(div);
+  while (overlay.children.length > 5) overlay.removeChild(overlay.firstChild);
+  setTimeout(() => div.classList.add('fading'), 4000);
+  setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 5000);
+}
+
+// ── Physics Helpers (mirrored from server for local rendering) ──
+function computeLandYClient(bx, bw, bh) {
+  let highestTop = GROUND_Y;
+  for (const b of stack) {
+    const overlapL = Math.max(bx, b.x);
+    const overlapR = Math.min(bx + bw, b.x + b.w);
+    if (overlapR > overlapL + 1 && b.y < highestTop) {
+      highestTop = b.y;
+    }
+  }
+  return highestTop - bh;
+}
+
+function computeStackHeight() {
+  return stack.length;
+}
+
+function getStackTopY() {
+  if (stack.length === 0) return GROUND_Y;
+  return Math.min(...stack.map(b => b.y));
+}
+
+function updateTargetViewport() {
+  const topY = getStackTopY();
+  // Target: stack top should be at ~30% from top of canvas
+  const desiredTopOnCanvas = canvasH * 0.3;
+  // viewportY shifts the world up (positive = scroll up)
+  // canvasY = worldY - viewportY
+  // desiredTopOnCanvas = topY - targetViewportY
+  // targetViewportY = topY - desiredTopOnCanvas
+  const newTarget = topY - desiredTopOnCanvas;
+  if (newTarget > targetViewportY) {
+    targetViewportY = newTarget;
+  }
+}
+
+// ── Collapse animation ──
+function startCollapseAnim() {
+  const particles = stack.map(b => ({
+    x: b.x + b.w / 2,
+    y: b.y + b.h / 2,
+    w: b.w,
+    h: b.h,
+    color: b.color,
+    vx: (Math.random() - 0.5) * 400,
+    vy: -Math.random() * 300 - 100,
+    rot: 0,
+    rotV: (Math.random() - 0.5) * 8,
+    opacity: 1
+  }));
+  collapseAnim = { particles, startTime: performance.now(), duration: 2000 };
+  shakeAmp = 16;
+  stack = [];
+}
+
+// ── Render Loop ──
+function renderLoop(ts) {
+  animFrame = requestAnimationFrame(renderLoop);
+  wobbleTime = (ts || 0) * 0.003;
+
+  // Lerp viewport
+  viewportY += (targetViewportY - viewportY) * 0.08;
+
+  // Screen shake decay
+  if (shakeAmp > 0) {
+    shakeAmp *= 0.9;
+    if (shakeAmp < 0.5) shakeAmp = 0;
+    shakeDx = (Math.random() - 0.5) * shakeAmp;
+    shakeDy = (Math.random() - 0.5) * shakeAmp;
+  } else { shakeDx = 0; shakeDy = 0; }
+
+  // Advance slider (only for current player)
+  if (!gameOver && currentBlock && myIdx === currentTurn && !fallingAnim) {
+    const maxX = GAME_W - currentBlock.w;
+    sliderX += sliderDir * sliderSpeed;
+    if (sliderX >= maxX) { sliderX = maxX; sliderDir = -1; }
+    else if (sliderX <= 0) { sliderX = 0; sliderDir = 1; }
+    wsSend({ type: 'slide_pos', x: Math.round(sliderX) });
+  }
+
+  draw(ts);
+}
+
+function worldToCanvas(x, y) {
+  return { x: x + (canvasW - GAME_W) / 2 + shakeDx, y: y - viewportY + shakeDy };
+}
+
+function draw(ts) {
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, canvasH);
+  grad.addColorStop(0, '#0d0d1a');
+  grad.addColorStop(1, '#1a1a2e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  const offsetX = (canvasW - GAME_W) / 2;
+
+  // Draw grid lines (subtle)
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  const gridSpacing = 40;
+  const gridOffsetY = (-viewportY % gridSpacing + gridSpacing) % gridSpacing;
+  for (let gy = gridOffsetY; gy < canvasH; gy += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(canvasW, gy); ctx.stroke();
+  }
+  for (let gx = offsetX % gridSpacing; gx < canvasW; gx += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, canvasH); ctx.stroke();
+  }
+
+  // Draw stacked blocks
+  const now = performance.now();
+  for (const b of stack) {
+    let sx = 1, sy = 1, bx = b.x, by = b.y, bw = b.w, bh = b.h;
+
+    // Squish animation
+    if (squishAnim && squishAnim.block === b) {
+      const t = Math.min(1, (now - squishAnim.startTime) / squishAnim.duration);
+      const squishCurve = Math.sin(t * Math.PI); // 0→1→0
+      sy = 1 - squishCurve * 0.25;
+      sx = 1 + squishCurve * 0.15;
+      if (t >= 1) squishAnim = null;
+    }
+
+    // Wobble
+    if (b.wobble) {
+      const angle = Math.sin(wobbleTime * 4 + b.id * 0.7) * 0.035;
+      const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
+      ctx.save();
+      ctx.translate(cv.x, cv.y);
+      ctx.rotate(angle);
+      drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+      ctx.restore();
+      continue;
+    }
+
+    const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
+    ctx.save();
+    ctx.translate(cv.x, cv.y);
+    drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+    ctx.restore();
+  }
+
+  // Falling block animation
+  if (fallingAnim) {
+    const b = fallingAnim.block;
+    const elapsed = now - fallingAnim.startTime;
+    const t = Math.min(1, elapsed / fallingAnim.duration);
+    // Ease in (gravity feel): t^2
+    const eased = t * t;
+    const drawY = fallingAnim.fromY + (fallingAnim.toY - fallingAnim.fromY) * eased;
+    const cv = worldToCanvas(b.x + b.w / 2, drawY + b.h / 2);
+    ctx.save();
+    ctx.translate(cv.x, cv.y);
+    drawBlock(ctx, -b.w / 2, -b.h / 2, b.w, b.h, b.color);
+    ctx.restore();
+  }
+
+  // Slider (current block preview) — draw for current player or observers
+  if (!gameOver && currentBlock && !fallingAnim) {
+    const isMyTurn = myIdx === currentTurn;
+    const drawSlider = isMyTurn || isObserver;
+    if (drawSlider) {
+      const bw = currentBlock.w, bh = currentBlock.h;
+      const sx = isMyTurn ? sliderX : (GAME_W - bw) / 2; // observers see it centered
+      const by = -bh - 10; // just above top of viewport — world coords
+      const cv = worldToCanvas(sx + bw / 2, by + bh / 2);
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.translate(cv.x, cv.y);
+      const col = players[currentTurn] ? players[currentTurn].color : '#888';
+      drawBlock(ctx, -bw / 2, -bh / 2, bw, bh, col);
+      ctx.restore();
+
+      // Drop shadow / ghost
+      if (isMyTurn) {
+        const landY = computeLandYClient(sx, bw, bh);
+        const gcv = worldToCanvas(sx + bw / 2, landY + bh / 2);
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.translate(gcv.x, gcv.y);
+        drawBlock(ctx, -bw / 2, -bh / 2, bw, bh, col);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Ground line
+  const groundCv = worldToCanvas(0, GROUND_Y);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(offsetX + shakeDx, groundCv.y);
+  ctx.lineTo(offsetX + GAME_W + shakeDx, groundCv.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Left/right walls
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(offsetX + shakeDx, 0);
+  ctx.lineTo(offsetX + shakeDx, canvasH);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(offsetX + GAME_W + shakeDx, 0);
+  ctx.lineTo(offsetX + GAME_W + shakeDx, canvasH);
+  ctx.stroke();
+  ctx.restore();
+
+  // Collapse animation
+  if (collapseAnim) {
+    const elapsed = now - collapseAnim.startTime;
+    const dt = 1 / 60;
+    for (const p of collapseAnim.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 600 * dt; // gravity
+      p.rot += p.rotV * dt;
+      p.opacity = Math.max(0, 1 - elapsed / collapseAnim.duration);
+    }
+    for (const p of collapseAnim.particles) {
+      if (p.opacity <= 0) continue;
+      const cv = worldToCanvas(p.x, p.y);
+      ctx.save();
+      ctx.globalAlpha = p.opacity;
+      ctx.translate(cv.x, cv.y);
+      ctx.rotate(p.rot);
+      drawBlock(ctx, -p.w / 2, -p.h / 2, p.w, p.h, p.color);
+      ctx.restore();
+    }
+    if (elapsed > collapseAnim.duration) collapseAnim = null;
+  }
+
+  // Height indicator
+  if (stack.length > 0 && !gameOver) {
+    const topY = getStackTopY();
+    const label = `${stack.length} blocks`;
+    const cv = worldToCanvas(GAME_W - 5, topY - 10);
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText(label, cv.x, cv.y);
+    ctx.restore();
+  }
+}
+
+function drawBlock(ctx, x, y, w, h, color) {
+  const radius = 4;
+  // Shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+
+  // Main fill
+  ctx.fillStyle = color;
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  // Highlight top
+  const hlGrad = ctx.createLinearGradient(x, y, x, y + h * 0.5);
+  hlGrad.addColorStop(0, 'rgba(255,255,255,0.35)');
+  hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hlGrad;
+  roundRect(ctx, x, y, w, h * 0.5, radius);
+  ctx.fill();
+
+  // Border
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.stroke();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+</script>
+</body>
+</html>

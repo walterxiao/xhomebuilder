@@ -9,6 +9,7 @@ const pictionary = require('./games/pictionary');
 const presence = require('./games/presence');
 const chess = require('./games/chess');
 const pingpong = require('./games/pingpong');
+const blockstack = require('./games/blockstack');
 
 const PORT = process.env.PORT || 9753;
 
@@ -20,6 +21,7 @@ const PAGES = {
   '/pictionary': 'pictionary.html',
   '/chess':      'chess.html',
   '/pingpong':   'pingpong.html',
+  '/blockstack': 'blockstack.html',
 };
 
 const httpServer = http.createServer((req, res) => {
@@ -61,6 +63,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/pingpong') {
     pingpong.wss.handleUpgrade(req, socket, head, ws => {
       pingpong.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/blockstack') {
+    blockstack.wss.handleUpgrade(req, socket, head, ws => {
+      blockstack.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

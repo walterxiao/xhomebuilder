@@ -335,8 +335,11 @@ let currentTurn = -1;
 let currentBlock = null;
 let sliderX = 0;
 let remoteSliderX = 0; // slider position of the current-turn player (for other viewers)
-let sliderDir = 1;
-let sliderSpeed = 2.5; // px/frame at canvas scale
+// Free-placement drag state
+let pointerDown = false;
+let pointerDownX = 0;
+let pointerDownTime = 0;
+let pointerMoved = false;
 let timerLeft = 15;
 let gameOver = false;
 let animFrame = null;
@@ -375,10 +378,30 @@ window.addEventListener('load', () => {
     if (e.key === 'Enter') sendChat();
   });
 
-  // Tap canvas to drop (mobile-friendly)
-  canvas.addEventListener('click', () => {
-    if (myIdx === currentTurn && !gameOver && !fallingAnim) dropBlock();
+  // Free-placement: drag to position block, quick tap = position + drop
+  canvas.addEventListener('pointerdown', e => {
+    if (myIdx !== currentTurn || gameOver || fallingAnim) return;
+    canvas.setPointerCapture(e.pointerId);
+    pointerDown = true;
+    pointerDownX = e.clientX;
+    pointerDownTime = performance.now();
+    pointerMoved = false;
+    setSliderFromClientX(e.clientX);
   });
+  canvas.addEventListener('pointermove', e => {
+    if (!pointerDown) return;
+    if (Math.abs(e.clientX - pointerDownX) > 8) pointerMoved = true;
+    setSliderFromClientX(e.clientX);
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!pointerDown) return;
+    pointerDown = false;
+    // Quick tap (no real drag) = position at that X and drop
+    if (!pointerMoved && performance.now() - pointerDownTime < 350) {
+      dropBlock();
+    }
+  });
+  canvas.addEventListener('pointercancel', () => { pointerDown = false; });
 
   resizeCanvas();
   window.addEventListener('resize', () => {
@@ -483,6 +506,18 @@ function startGame() {
   wsSend({ type: 'start' });
 }
 
+function setSliderFromClientX(clientX) {
+  if (myIdx !== currentTurn || !currentBlock) return;
+  const rect = canvas.getBoundingClientRect();
+  const offsetX = (canvasW - GAME_W) / 2;
+  // Center the block on the pointer
+  const gameX = clientX - rect.left - offsetX - currentBlock.w / 2;
+  const c = getSliderConstraint();
+  const newX = Math.max(c.min, Math.min(c.max, gameX));
+  sliderX = newX;
+  wsSend({ type: 'slide_pos', x: Math.round(sliderX) });
+}
+
 function dropBlock() {
   if (myIdx !== currentTurn || gameOver) return;
   wsSend({ type: 'drop', x: Math.round(sliderX) });
@@ -513,7 +548,7 @@ function resetLocalState() {
   currentBlock = null;
   sliderX = 0;
   remoteSliderX = 0;
-  sliderDir = 1;
+  pointerDown = false;
   viewportY = 0;
   targetViewportY = 0;
   shakeAmp = 0;
@@ -614,9 +649,8 @@ function handleMsg(msg) {
       currentTurn = msg.playerIdx;
       currentBlock = msg.block;
       timerLeft = msg.timeLeft;
-      sliderX = 0;
       remoteSliderX = 0;
-      sliderDir = 1;
+      { const c = getSliderConstraint(); sliderX = (c.min + c.max) / 2; }
       updateTopBar();
       updateDropBtn();
       break;
@@ -873,13 +907,10 @@ function renderLoop(ts) {
     shakeDy = (Math.random() - 0.5) * shakeAmp;
   } else { shakeDx = 0; shakeDy = 0; }
 
-  // Advance slider (only for current player), constrained to overlap top of stack
+  // Clamp sliderX to constraint (e.g. after a new block is added to stack)
   if (!gameOver && currentBlock && myIdx === currentTurn && !fallingAnim) {
     const c = getSliderConstraint();
-    sliderX += sliderDir * sliderSpeed;
-    if (sliderX >= c.max) { sliderX = c.max; sliderDir = -1; }
-    else if (sliderX <= c.min) { sliderX = c.min; sliderDir = 1; }
-    wsSend({ type: 'slide_pos', x: Math.round(sliderX) });
+    sliderX = Math.max(c.min, Math.min(c.max, sliderX));
   }
 
   draw(ts);
@@ -1020,6 +1051,17 @@ function draw(ts) {
     }
     drawBlock(ctx, canvasBlockX, SLIDER_Y, bw, bh, col);
     ctx.restore();
+
+    // Drag-handle hint arrows (my turn only)
+    if (isMyTurn) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = `bold ${Math.max(11, Math.round(bh * 0.7))}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('◀ ▶', canvasBlockX + bw / 2, SLIDER_Y + bh / 2);
+      ctx.restore();
+    }
 
     // Ghost landing preview
     const landY = computeLandYClient(sx, bw, bh);

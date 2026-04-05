@@ -22,6 +22,7 @@ const PAGES = {
   '/chess':      'chess.html',
   '/pingpong':   'pingpong.html',
   '/blockstack': 'blockstack.html',
+  '/raiden':     'raiden.html',
 };
 
 const httpServer = http.createServer((req, res) => {

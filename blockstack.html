@@ -927,35 +927,53 @@ function draw(ts) {
       if (t >= 1) squishAnim = null;
     }
 
-    // Wobble — intensifies during pre-collapse warning
+    // Wobble/shake — for off-balance blocks and pre-collapse warning
     if (b.wobble || preCollapse) {
       const isUnstable = preCollapse && b.id === unstableBlockId;
-      let angle;
+      const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
+
+      let angle, dx = 0, dy = 0, glowColor = null, glowAlpha = 0;
+
       if (isUnstable) {
-        // Growing directional lean toward the fall side
+        // Growing directional lean + rapid shake
         const tpc = Math.min(1, (now - preCollapseStart) / 1400);
         const tipAmp = 0.07 + tpc * 0.30;
         angle = Math.sin(wobbleTime * 9 + tpc * 4) * tipAmp * tipDir;
+        // Rapid positional shake (increases with tpc)
+        dx = Math.sin(wobbleTime * 28 + b.id) * (1.5 + tpc * 4);
+        dy = Math.cos(wobbleTime * 31 + b.id) * (1 + tpc * 2.5);
+        glowColor = '#ff2222';
+        glowAlpha = 0.38 + 0.2 * Math.abs(Math.sin(wobbleTime * 8));
+      } else if (preCollapse) {
+        // All blocks shake during pre-collapse
+        angle = Math.sin(wobbleTime * 11 + b.id * 0.9) * 0.09;
+        dx = Math.sin(wobbleTime * 22 + b.id * 1.3) * 2;
+        dy = Math.cos(wobbleTime * 19 + b.id * 0.7) * 1.5;
       } else {
-        const freq = preCollapse ? 11 : 4;
-        const baseAmp = preCollapse ? 0.09 : 0.035;
-        angle = Math.sin(wobbleTime * freq + b.id * 0.9) * baseAmp;
+        // Normal gameplay wobble: block is near-tipping from aggregate COM
+        // Rapid shake + orange tint to signal danger
+        const shakeSpeed = 24 + (b.id % 5); // slightly different per block
+        angle = Math.sin(wobbleTime * 7 + b.id * 0.9) * 0.04;
+        dx = Math.sin(wobbleTime * shakeSpeed + b.id * 2.1) * 2.5;
+        dy = Math.cos(wobbleTime * (shakeSpeed - 4) + b.id * 1.7) * 1.5;
+        glowColor = '#ff8800';
+        glowAlpha = 0.25 + 0.15 * Math.abs(Math.sin(wobbleTime * 6));
       }
-      const cv = worldToCanvas(bx + bw / 2, by + bh / 2);
+
       ctx.save();
-      ctx.translate(cv.x, cv.y);
+      ctx.translate(cv.x + dx, cv.y + dy);
       ctx.rotate(angle);
-      if (isUnstable) {
-        ctx.shadowColor = '#ff2222';
-        ctx.shadowBlur = 20;
-        drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+      if (glowColor) {
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 14;
+      }
+      drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
+      if (glowColor) {
         ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.38 + 0.2 * Math.abs(Math.sin(wobbleTime * 8));
-        ctx.fillStyle = '#ff3333';
+        ctx.globalAlpha = glowAlpha;
+        ctx.fillStyle = glowColor;
         roundRect(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, 4);
         ctx.fill();
-      } else {
-        drawBlock(ctx, -bw * sx / 2, -bh * sy / 2, bw * sx, bh * sy, b.color);
       }
       ctx.restore();
       continue;

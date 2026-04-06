@@ -678,6 +678,50 @@
     }
     #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
 
+    /* ===== AI BUTTON ===== */
+    #ai-btn {
+      flex: 1;
+      padding: 13px;
+      background: transparent;
+      color: #70b870;
+      border: 1px solid #3a6a3a;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      font-family: 'Georgia', serif;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+    }
+    #ai-btn:hover { color: #a0e0a0; border-color: #70b870; background: rgba(70,160,70,0.08); }
+
+    #ai-difficulty-row {
+      margin-top: 12px;
+    }
+    #ai-difficulty-row .diff-label {
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      color: #555577;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .diff-btns { display: flex; gap: 8px; }
+    .diff-btn {
+      flex: 1;
+      padding: 7px 0;
+      background: transparent;
+      color: #555577;
+      border: 1px solid #2a2a5a;
+      border-radius: 3px;
+      font-family: 'Georgia', serif;
+      font-size: 0.8rem;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .diff-btn:hover { color: #9090b0; border-color: #6060a0; }
+    .diff-btn.selected { color: #a0e0a0; border-color: #70b870; }
+
     /* ===== RESPONSIVE ===== */
     @media (max-width: 720px) {
       :root { --sq: 28px; }
@@ -713,7 +757,16 @@
     <input id="name-input" type="text" placeholder="enter your name" autocomplete="off" maxlength="24">
     <div class="lobby-btns">
       <button id="join-btn">PLAY</button>
+      <button id="ai-btn">VS AI</button>
       <button id="watch-btn">WATCH</button>
+    </div>
+    <div id="ai-difficulty-row" style="display:none">
+      <span class="diff-label">Difficulty</span>
+      <div class="diff-btns">
+        <button class="diff-btn" data-d="easy">Easy</button>
+        <button class="diff-btn selected" data-d="normal">Normal</button>
+        <button class="diff-btn" data-d="hard">Hard</button>
+      </div>
     </div>
     <div id="lobby-error"></div>
     <p class="lobby-hint">
@@ -829,6 +882,14 @@
   let scores = { black: 0, white: 0 };
   let myRole = 'player';
   let selectedPiece = 'classic';
+
+  // ── AI state ──
+  let aiMode = false;
+  let aiDifficulty = 'normal';
+  let aiColor = 'white';
+  let localBoard = null;
+  let localCurrentPlayer = 'black';
+  const AI_DIRS = [[0,1],[1,0],[1,1],[1,-1]];
 
   // ---- Audio ----
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1356,11 +1417,211 @@
     setTurn(firstPlayer);
   }
 
+  // ── AI helpers ──
+  function aiLocalWin(board, r, c, color) {
+    for (const [dr, dc] of AI_DIRS) {
+      const line = [[r, c]];
+      for (let d = 1; d <= 4; d++) {
+        const nr = r+dr*d, nc = c+dc*d;
+        if (nr<0||nr>=15||nc<0||nc>=15||board[nr][nc]!==color) break;
+        line.push([nr, nc]);
+      }
+      for (let d = 1; d <= 4; d++) {
+        const nr = r-dr*d, nc = c-dc*d;
+        if (nr<0||nr>=15||nc<0||nc>=15||board[nr][nc]!==color) break;
+        line.push([nr, nc]);
+      }
+      if (line.length >= 5) return line;
+    }
+    return null;
+  }
+
+  function aiLocalThreat(board, color) {
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        if (board[r][c] !== color) continue;
+        for (const [dr, dc] of AI_DIRS) {
+          const line = [[r, c]];
+          for (let d = 1; d <= 4; d++) {
+            const nr = r+dr*d, nc = c+dc*d;
+            if (nr<0||nr>=15||nc<0||nc>=15||board[nr][nc]!==color) break;
+            line.push([nr, nc]);
+          }
+          if (line.length >= 4) return line.slice(0, 4);
+        }
+      }
+    }
+    return null;
+  }
+
+  function aiCandidates(board) {
+    const seen = new Set();
+    const out = [];
+    let hasAny = false;
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        if (!board[r][c]) continue;
+        hasAny = true;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const nr=r+dr, nc=c+dc;
+            const key = nr*15+nc;
+            if (nr>=0&&nr<15&&nc>=0&&nc<15&&!board[nr][nc]&&!seen.has(key)) {
+              seen.add(key); out.push([nr, nc]);
+            }
+          }
+        }
+      }
+    }
+    return hasAny ? out : [[7,7]];
+  }
+
+  function aiScorePos(board, r, c, color) {
+    let total = 0;
+    for (const [dr, dc] of AI_DIRS) {
+      let count = 1, openEnds = 0;
+      for (let d = 1; d <= 4; d++) {
+        const nr=r+dr*d, nc=c+dc*d;
+        if (nr<0||nr>=15||nc<0||nc>=15) break;
+        if (board[nr][nc]===color) count++;
+        else { if (!board[nr][nc]) openEnds++; break; }
+      }
+      for (let d = 1; d <= 4; d++) {
+        const nr=r-dr*d, nc=c-dc*d;
+        if (nr<0||nr>=15||nc<0||nc>=15) break;
+        if (board[nr][nc]===color) count++;
+        else { if (!board[nr][nc]) openEnds++; break; }
+      }
+      if      (count>=5)                    total += 100000;
+      else if (count===4 && openEnds>=1)    total += 10000;
+      else if (count===4)                   total += 1000;
+      else if (count===3 && openEnds>=2)    total += 1000;
+      else if (count===3 && openEnds===1)   total += 100;
+      else if (count===2 && openEnds>=2)    total += 50;
+      else if (count===2)                   total += 10;
+      else if (openEnds>0)                  total += 1;
+    }
+    return total;
+  }
+
+  function aiEvalCell(board, r, c, aiCol, plCol) {
+    board[r][c] = aiCol;
+    if (aiLocalWin(board, r, c, aiCol)) { board[r][c]=null; return 1000000; }
+    board[r][c] = plCol;
+    if (aiLocalWin(board, r, c, plCol)) { board[r][c]=null; return 900000; }
+    board[r][c] = null;
+    return aiScorePos(board, r, c, aiCol) * 1.0 + aiScorePos(board, r, c, plCol) * 0.85;
+  }
+
+  function computeAiMove(board, aiCol, plCol, diff) {
+    const cands = aiCandidates(board);
+    if (cands.length === 1 && cands[0][0]===7 && cands[0][1]===7) return [7,7];
+
+    const scored = cands.map(([r,c]) => ({ r, c, s: aiEvalCell(board, r, c, aiCol, plCol) }));
+    scored.sort((a,b) => b.s - a.s);
+
+    if (diff === 'easy') {
+      // Pick randomly from top 6 (or all if fewer)
+      const pool = scored.slice(0, Math.min(6, scored.length));
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      return [pick.r, pick.c];
+    }
+
+    if (diff === 'hard') {
+      // Verify best move doesn't let opponent win next turn; if so, try next
+      for (let i = 0; i < Math.min(scored.length, 5); i++) {
+        const { r, c, s } = scored[i];
+        if (s >= 900000) return [r, c]; // forced move, just take it
+        // Simulate placing AI piece and check if opponent can win anywhere
+        board[r][c] = aiCol;
+        const opCands = aiCandidates(board);
+        let opWins = false;
+        for (const [or, oc] of opCands) {
+          board[or][oc] = plCol;
+          if (aiLocalWin(board, or, oc, plCol)) opWins = true;
+          board[or][oc] = null;
+          if (opWins) break;
+        }
+        board[r][c] = null;
+        if (!opWins) return [r, c];
+      }
+    }
+
+    return [scored[0].r, scored[0].c];
+  }
+
+  function aiDoMove() {
+    const [ar, ac] = computeAiMove(localBoard, aiColor, myColor, aiDifficulty);
+    localBoard[ar][ac] = aiColor;
+    const winLine = aiLocalWin(localBoard, ar, ac, aiColor);
+    const threat = winLine ? null : aiLocalThreat(localBoard, aiColor);
+    applyMove(ar, ac, aiColor, winLine, threat);
+    if (!winLine) localCurrentPlayer = myColor;
+  }
+
+  function startAiGame(difficulty) {
+    aiMode = true;
+    aiDifficulty = difficulty;
+    myRole = 'player';
+    myColor = 'black';
+    aiColor = 'white';
+    opponentName = 'AI (' + capitalize(difficulty) + ')';
+    localCurrentPlayer = 'black';
+    localBoard = Array.from({length:15}, () => new Array(15).fill(null));
+    if (ws) { ws.onclose=null; ws.onerror=null; ws.close(); ws=null; }
+    hideBanner();
+    startGame();
+  }
+
+  // ── AI Lobby UI ──
+  let _aiSelectedDiff = 'normal';
+  document.getElementById('ai-btn').addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (!name) { setLobbyError('Please enter your name.'); return; }
+    setLobbyError('');
+    myName = name;
+    startAiGame(_aiSelectedDiff);
+  });
+
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _aiSelectedDiff = btn.dataset.d;
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    });
+  });
+
+  nameInput.addEventListener('focus', () => {
+    document.getElementById('ai-difficulty-row').style.display = '';
+  });
+  // Show difficulty row if name already filled (e.g., from name overlay)
+  window.onNameSet = name => {
+    document.getElementById('name-input').value = name;
+    document.getElementById('ai-difficulty-row').style.display = '';
+  };
+
+  // ── end AI helpers ──
+
   function onCellClick(e) {
     if (gameOver) return;
     if (e.currentTarget.querySelector('.piece')) return;
+    const r = +e.currentTarget.dataset.r;
+    const c = +e.currentTarget.dataset.c;
+    if (aiMode) {
+      if (localCurrentPlayer !== myColor) return;
+      if (localBoard[r][c]) return;
+      localBoard[r][c] = myColor;
+      const winLine = aiLocalWin(localBoard, r, c, myColor);
+      const threat = winLine ? null : aiLocalThreat(localBoard, myColor);
+      applyMove(r, c, myColor, winLine, threat);
+      if (!winLine) {
+        localCurrentPlayer = aiColor;
+        setTimeout(aiDoMove, 280);
+      }
+      return;
+    }
     if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'move', row: +e.currentTarget.dataset.r, col: +e.currentTarget.dataset.c }));
+      ws.send(JSON.stringify({ type: 'move', row: r, col: c }));
     }
   }
 
@@ -1487,6 +1748,21 @@
 
   // ---- Rematch ----
   document.getElementById('rematch-btn').addEventListener('click', () => {
+    if (aiMode) {
+      localBoard = Array.from({length:15}, () => new Array(15).fill(null));
+      localCurrentPlayer = 'black';
+      gameOver = false;
+      document.getElementById('rematch-btn').style.display = 'none';
+      document.getElementById('rematch-btn').disabled = false;
+      document.getElementById('rematch-info').textContent = '';
+      document.getElementById('surrender-btn').style.display = '';
+      clearThreat();
+      hideBanner();
+      buildBoard('black');
+      updateGhosts();
+      setTurn('black');
+      return;
+    }
     document.getElementById('rematch-btn').disabled = true;
     document.getElementById('rematch-info').textContent = 'Waiting for opponent…';
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'rematch' }));
@@ -1502,6 +1778,22 @@
 
   document.getElementById('surrender-confirm').addEventListener('click', () => {
     surrenderModal.classList.remove('visible');
+    if (aiMode) {
+      // Treat as forfeit: AI wins
+      gameOver = true;
+      scores[aiColor]++;
+      document.getElementById('black-wins').textContent = scores.black;
+      document.getElementById('white-wins').textContent = scores.white;
+      const isBlack = aiColor === 'black';
+      document.getElementById('turn-dot').style.background = isBlack ? '#222' : '#f5f5f5';
+      document.getElementById('turn-dot').style.border = isBlack ? '2px solid #555' : '2px solid #999';
+      document.getElementById('turn-text').textContent = `${myName} surrendered. ${opponentName} wins!`;
+      boardEl.classList.add('not-my-turn');
+      document.getElementById('surrender-btn').style.display = 'none';
+      document.getElementById('rematch-btn').style.display = '';
+      playLoseSound();
+      return;
+    }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'surrender' }));
   });
 
@@ -1512,6 +1804,8 @@
   // ---- Quit ----
   document.getElementById('quit-btn').addEventListener('click', () => {
     surrenderModal.classList.remove('visible');
+    aiMode = false;
+    localBoard = null;
     if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; }
     scores = { black: 0, white: 0 };
     document.getElementById('black-wins').textContent = '0';
@@ -1589,7 +1883,6 @@
   // ---- Init ----
 
 // ── Name overlay + Presence ───────────────────────────────────────────────────
-window.onNameSet = name => { document.getElementById('name-input').value = name; };
 const HUB_PAGE = 'connect5';
 (function() {
   function connectPresence(name) {

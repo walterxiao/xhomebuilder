@@ -226,8 +226,9 @@ window.addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
   if(e.code==='Space'){
-    if(gameState==='title'||(gameState==='entry'&&mode==='solo')){soloPlay();return;}
-    if(gameState==='gameover'&&mode==='solo'){soloPlay();return;}
+    if(gameState==='title'){startGame();return;}
+    if(gameState==='entry'&&mode==='solo'){soloPlay();return;}
+    if(gameState==='gameover'&&mode==='solo'){startGame();return;}
     if(gameState==='playing'){useBomb(1);}
   }
   if((e.code==='KeyB'||e.code==='ShiftLeft')&&gameState==='playing')useBomb(1);
@@ -260,8 +261,8 @@ function handleTouch(pid,g,type){
   if(type==='down'){
     if(g.x<80&&g.y>GH-90){useBomb(1);return;}
     if(mode!=='solo'&&g.x>GW-80&&g.y>GH-90){useBomb(2);return;}
-    if(gameState==='title'){soloPlay();return;}
-    if(gameState==='gameover'&&mode==='solo'){soloPlay();return;}
+    if(gameState==='title'){startGame();return;}
+    if(gameState==='gameover'&&mode==='solo'){startGame();return;}
   }
   // P1 uses left-half touch, P2 uses right-half
   if(mode==='solo'||g.x<=GW/2){
@@ -751,7 +752,7 @@ function loop(ts){
   if(gameState==='playing'||gameState==='title'||gameState==='gameover')render();
   // Gameover tap restart
   if(gameState==='gameover'&&mode==='solo'){
-    canvas.onclick=()=>{soloPlay();canvas.onclick=null;};
+    canvas.onclick=()=>{startGame();canvas.onclick=null;};
   }
 }
 requestAnimationFrame(loop);

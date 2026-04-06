@@ -176,6 +176,8 @@ function handleNet(msg){
     applyHostState(msg);
   } else if(msg.type==='input'){
     guestKeys=msg.k;
+    // Apply guest's authoritative p2 position for accurate collision detection
+    if(msg.px!=null&&p2){p2.x=msg.px;p2.y=msg.py;}
     if(msg.k.bomb){msg.k.bomb=0;useBomb(2);}
   } else if(msg.type==='disconnected'){
     showToast('Other player disconnected');
@@ -541,7 +543,7 @@ function sendHostState(){
     p1:p1?{x:Math.round(p1.x),y:Math.round(p1.y),w:p1.weapon,ml:p1.missiles,iv:invTimer1>0}:null,
     p2:p2?{x:Math.round(p2.x),y:Math.round(p2.y),w:p2.weapon,ml:p2.missiles,iv:invTimer2>0}:null,
     en:enemies.map(e=>[e.type,Math.round(e.x),Math.round(e.y),e.hp,e.maxHp]),
-    eb:eBullets.map(b=>[Math.round(b.x),Math.round(b.y)]),
+    eb:eBullets.map(b=>[Math.round(b.x),Math.round(b.y),Math.round(b.vx),Math.round(b.vy)]),
     pu:powerups.map(p=>[Math.round(p.x),Math.round(p.y),p.type]),
     sc:score,l1:lives1,l2:lives2,b1:bombs1,b2:bombs2,lv:level,
     bfl:bombFlash,lvMsg:levelMsg,lvT:levelMsgTimer
@@ -549,48 +551,58 @@ function sendHostState(){
 }
 
 function applyHostState(msg){
-  // Only guest applies received state
   if(mode!=='guest')return;
-  gState=msg;
-  // Update own ship (p2) from host-authoritative position
-  if(msg.p2)p2={x:msg.p2.x,y:msg.p2.y,weapon:msg.p2.w,missiles:msg.p2.ml,hbr:7,speed:220,fireT:0,fireRate:0.13,missileT:0};
+  // Sync p1 (host ship) fully — we don't control it
   if(msg.p1)p1={x:msg.p1.x,y:msg.p1.y,weapon:msg.p1.w,missiles:msg.p1.ml,hbr:7,speed:220,fireT:0,fireRate:0.13,missileT:0};
   invTimer1=msg.p1&&msg.p1.iv?1:0;
-  invTimer2=msg.p2&&msg.p2.iv?1:0;
-  // Reconstruct enemies (lightweight)
+  // Sync p2 weapon/status only — guest controls p2 position locally
+  if(msg.p2){
+    if(!p2)p2=mkShip(GW*0.65,GH-100);
+    p2.weapon=msg.p2.w; p2.missiles=msg.p2.ml;
+    invTimer2=msg.p2.iv?1:0;
+  }
+  // Reconstruct enemies
   enemies=msg.en.map(([type,x,y,hp,maxHp])=>{
     const C={scout:{w:16,h:16,col:'#88aaff'},fighter:{w:22,h:22,col:'#ff6644'},
              tank:{w:28,h:18,col:'#88bb44'},carrier:{w:42,h:34,col:'#dd8822'},boss:{w:80,h:70,col:'#cc2244'}}[type]||{w:20,h:20,col:'#888'};
     return{type,x,y,w:C.w,h:C.h,hp,maxHp,col:C.col,flash:0,spd:0,shoot:false,path:'',pt:0,shootT:99,spawnT:99};
   });
-  eBullets=msg.eb.map(([x,y])=>({x,y,vx:0,vy:0,r:4,col:'#ff3322'}));
+  // Keep bullet velocities so guest can interpolate between state updates
+  eBullets=msg.eb.map(([x,y,vx,vy])=>({x,y,vx,vy,r:4,col:'#ff3322'}));
   powerups=msg.pu.map(([x,y,t])=>({x,y,type:t,vy:0,life:9}));
   score=msg.sc;lives1=msg.l1;lives2=msg.l2;bombs1=msg.b1;bombs2=msg.b2;level=msg.lv;
   bombFlash=msg.bfl||0;
   if(msg.lvMsg)levelMsg=msg.lvMsg;
   if(msg.lvT!==undefined)levelMsgTimer=msg.lvT;
+  if(msg.go)gameState='gameover';
 }
 
 function sendGuestInput(){
   if(mode!=='guest'||!ws||ws.readyState!==1)return;
-  wsSend({type:'input',k:{
-    up:keys['ArrowUp']||keys['KeyW']?1:0,
-    dn:keys['ArrowDown']||keys['KeyS']?1:0,
-    lt:keys['ArrowLeft']||keys['KeyA']?1:0,
-    rt:keys['ArrowRight']||keys['KeyD']?1:0,
-    bomb:0  // bomb is triggered via useBomb()
-  }});
+  // Send p2 position so host uses it for collision detection
+  wsSend({type:'input',
+    k:{up:keys['ArrowUp']||keys['KeyW']?1:0,dn:keys['ArrowDown']||keys['KeyS']?1:0,
+       lt:keys['ArrowLeft']||keys['KeyA']?1:0,rt:keys['ArrowRight']||keys['KeyD']?1:0,bomb:0},
+    px:p2?Math.round(p2.x):null, py:p2?Math.round(p2.y):null
+  });
 }
 
-// Guest also moves own ship locally for responsiveness (then host corrects)
+// Guest: local simulation of own ship + cosmetic interpolation
 function updateGuest(dt){
   terrainScrollY+=90*dt;if(terrainScrollY>=T_ROWS*TILE)terrainScrollY-=T_ROWS*TILE;
   bombFlash=Math.max(0,bombFlash-dt*3);
+  if(invTimer2>0)invTimer2-=dt;
   if(levelMsgTimer>0)levelMsgTimer-=dt;
-  // Move p2 locally
+  // Guest fully owns p2 movement
   if(p2){
     moveShip(p2,dt,keys['ArrowUp']||keys['KeyW'],keys['ArrowDown']||keys['KeyS'],
       keys['ArrowLeft']||keys['KeyA'],keys['ArrowRight']||keys['KeyD'],touch2,2);
+  }
+  // Interpolate enemy bullets between state updates so they move smoothly
+  for(let i=eBullets.length-1;i>=0;i--){
+    const b=eBullets[i];
+    b.x+=b.vx*dt; b.y+=b.vy*dt;
+    if(b.y>GH+20||b.y<-20||b.x<-20||b.x>GW+20)eBullets.splice(i,1);
   }
   // Animate particles
   for(let i=particles.length-1;i>=0;i--){
@@ -746,8 +758,8 @@ function loop(ts){
     if(mode==='guest'){updateGuest(dt);}
     else update(dt);
     // Network
-    if(mode==='host'){stateTimer+=dt;if(stateTimer>=0.05){stateTimer=0;sendHostState();}}
-    if(mode==='guest'){inputTimer+=dt;if(inputTimer>=0.033){inputTimer=0;sendGuestInput();}}
+    if(mode==='host'){stateTimer+=dt;if(stateTimer>=0.033){stateTimer=0;sendHostState();}}
+    if(mode==='guest'){inputTimer+=dt;if(inputTimer>=0.016){inputTimer=0;sendGuestInput();}}
   }
   if(gameState==='playing'||gameState==='title'||gameState==='gameover')render();
   // Gameover tap restart

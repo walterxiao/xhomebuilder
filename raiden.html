@@ -111,6 +111,11 @@ function backToEntry(){
   if(ws){ws.onclose=null;ws.close();ws=null;}
   gameState='entry';showScreen('se');loadSessions();
 }
+function exitGame(){
+  if(ws){ws.onclose=null;ws.close();ws=null;}
+  p1=null;p2=null;bullets=[];eBullets=[];enemies=[];powerups=[];particles=[];
+  gameState='entry';mode='solo';showScreen('se');loadSessions();
+}
 function soloPlay(){mode='solo';playerIdx=0;showScreen(null);resize();gameState='title';}
 
 function wsSend(obj){if(ws&&ws.readyState===1)ws.send(JSON.stringify(obj));}
@@ -233,6 +238,7 @@ window.addEventListener('keydown',e=>{
     if(gameState==='gameover'&&mode==='solo'){startGame();return;}
     if(gameState==='playing'){useBomb(1);}
   }
+  if(e.code==='Escape'&&(gameState==='playing'||gameState==='dead')){exitGame();return;}
   if((e.code==='KeyB'||e.code==='ShiftLeft')&&gameState==='playing')useBomb(1);
   if((e.code==='Enter'||e.code==='ShiftRight')&&gameState==='playing'&&p2)useBomb(2);
 });
@@ -263,6 +269,8 @@ function handleTouch(pid,g,type){
   if(type==='down'){
     if(g.x<80&&g.y>GH-90){useBomb(1);return;}
     if(mode!=='solo'&&g.x>GW-80&&g.y>GH-90){useBomb(2);return;}
+    // Exit button — top-right corner of HUD bar
+    if(g.x>GW-36&&g.y<28&&(gameState==='playing'||gameState==='dead')){exitGame();return;}
     if(gameState==='title'){startGame();return;}
     if(gameState==='gameover'&&mode==='solo'){startGame();return;}
   }
@@ -709,7 +717,11 @@ function render(){
   ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,GW,26);
   ctx.textAlign='center';ctx.fillStyle='#ffffff';ctx.fillText(`SCORE ${String(score).padStart(7,'0')}`,GW/2,5);
   ctx.textAlign='left';ctx.fillStyle='#aaaaaa';ctx.fillText(`HI ${String(hiScore).padStart(7,'0')}`,4,5);
-  ctx.textAlign='right';ctx.fillStyle='#88aaff';ctx.fillText(`LV${level}`,GW-4,5);
+  ctx.textAlign='right';ctx.fillStyle='#88aaff';ctx.fillText(`LV${level}`,GW-38,5);
+  // Exit button
+  ctx.fillStyle='rgba(180,40,40,0.7)';ctx.beginPath();if(ctx.roundRect)ctx.roundRect(GW-30,3,26,20,4);else ctx.rect(GW-30,3,26,20);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('✕',GW-17,13);
   // P1 HUD (bottom-left)
   ctx.fillStyle='rgba(0,0,0,0.5)';ctx.beginPath();ctx.arc(40,GH-50,28,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle=bombCooldown1>0?'#444':P1COL;ctx.lineWidth=2;ctx.beginPath();ctx.arc(40,GH-50,28,0,Math.PI*2);ctx.stroke();

@@ -10,6 +10,7 @@ const presence = require('./games/presence');
 const chess = require('./games/chess');
 const pingpong = require('./games/pingpong');
 const blockstack = require('./games/blockstack');
+const raiden = require('./games/raiden');
 
 const PORT = process.env.PORT || 9753;
 
@@ -25,8 +26,16 @@ const PAGES = {
   '/raiden':     'raiden.html',
 };
 
+
+
 const httpServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
+  if (urlPath === '/api/raiden/sessions') {
+    const data = JSON.stringify(raiden.getSessionList());
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(data);
+    return;
+  }
   if (urlPath === '/api/blockstack/sessions') {
     const data = JSON.stringify(blockstack.getSessionList());
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -74,6 +83,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/blockstack') {
     blockstack.wss.handleUpgrade(req, socket, head, ws => {
       blockstack.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/raiden') {
+    raiden.wss.handleUpgrade(req, socket, head, ws => {
+      raiden.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

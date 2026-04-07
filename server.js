@@ -11,6 +11,7 @@ const chess = require('./games/chess');
 const pingpong = require('./games/pingpong');
 const blockstack = require('./games/blockstack');
 const raiden = require('./games/raiden');
+const gofish = require('./games/gofish');
 
 const PORT = process.env.PORT || 9753;
 
@@ -24,6 +25,7 @@ const PAGES = {
   '/pingpong':   'pingpong.html',
   '/blockstack': 'blockstack.html',
   '/raiden':     'raiden.html',
+  '/gofish':     'gofish.html',
 };
 
 
@@ -87,6 +89,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/raiden') {
     raiden.wss.handleUpgrade(req, socket, head, ws => {
       raiden.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/gofish') {
+    gofish.wss.handleUpgrade(req, socket, head, ws => {
+      gofish.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

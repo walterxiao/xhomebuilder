@@ -112,6 +112,28 @@ function handleListSessions(ws) {
   send(ws, { type: 'pic_sessions_list', sessions: list });
 }
 
+function getSessionList() {
+  const list = [];
+  for (const [id, session] of sessions) {
+    if (session.phase === 'lobby' || session.phase === 'playing') {
+      const host = session.painter;
+      const playerCount = (session.painter ? 1 : 0) + session.guessers.length;
+      list.push({
+        id,
+        hostName: host ? host.name : '?',
+        players: playerCount,
+        maxPlayers: 99,
+        observers: 0,
+        canJoin: session.phase === 'lobby',
+        canObserve: session.phase === 'playing',
+        status: session.phase,
+        label: session.phase === 'lobby' ? `${playerCount} players joined` : 'Drawing in progress'
+      });
+    }
+  }
+  return list;
+}
+
 function handleCreate(ws, name) {
   if (ws.picSessionId !== null) return;
   if (typeof name !== 'string') return;
@@ -527,4 +549,4 @@ wss.on('connection', (ws) => {
   });
 });
 
-module.exports = { wss };
+module.exports = { wss, getSessionList };

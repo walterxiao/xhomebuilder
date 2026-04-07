@@ -4,7 +4,6 @@ const BOARD_SIZE = 15;
 const WIN_COUNT = 5;
 const DIRECTIONS = [[0,1],[1,0],[1,1],[1,-1]];
 
-let queue = null;
 let nextSessionId = 1;
 const sessions = new Map();
 
@@ -20,7 +19,8 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'join')         handleJoin(ws, msg.name);
+    if (msg.type === 'create')       handleCreate(ws, msg.name);
+    if (msg.type === 'join')         handleJoin(ws, msg.name, msg.sessionId);
     if (msg.type === 'move')         handleMove(ws, msg.row, msg.col);
     if (msg.type === 'rematch')      handleRematch(ws);
     if (msg.type === 'chat')         handleChat(ws, msg.text);
@@ -59,43 +59,52 @@ function sessionSummary(id, session) {
   };
 }
 
-function handleJoin(ws, name) {
+function handleCreate(ws, name) {
   if (!name || typeof name !== 'string') return send(ws, { type: 'error', message: 'Invalid name.' });
   const cleanName = name.trim().slice(0, 24);
   if (!cleanName) return send(ws, { type: 'error', message: 'Please enter a name.' });
 
   ws.playerName = cleanName;
 
-  if (queue && queue.ws.readyState === 1) {
-    const first = queue;
-    queue = null;
+  const sessionId = nextSessionId++;
+  const session = {
+    players: [
+      { ws, name: cleanName, color: 'black' },
+    ],
+    observers: [],
+    board: Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null)),
+    currentPlayer: 'black',
+    gameOver: false,
+    rematchVotes: new Set(),
+    lastLoser: null,
+  };
+  sessions.set(sessionId, session);
 
-    const sessionId = nextSessionId++;
-    const session = {
-      players: [
-        { ws: first.ws, name: first.name, color: 'black' },
-        { ws,           name: cleanName,  color: 'white' },
-      ],
-      observers: [],
-      board: Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null)),
-      currentPlayer: 'black',
-      gameOver: false,
-      rematchVotes: new Set(),
-      lastLoser: null,
-    };
-    sessions.set(sessionId, session);
+  ws.sessionId = sessionId;
+  ws.color = 'black';
 
-    first.ws.sessionId = sessionId;
-    first.ws.color = 'black';
-    ws.sessionId = sessionId;
-    ws.color = 'white';
+  send(ws, { type: 'waiting', sessionId, name: cleanName });
+}
 
-    send(first.ws, { type: 'start', color: 'black', myName: first.name, opponentName: cleanName });
-    send(ws,       { type: 'start', color: 'white', myName: cleanName,  opponentName: first.name });
-  } else {
-    queue = { ws, name: cleanName };
-    send(ws, { type: 'waiting' });
-  }
+function handleJoin(ws, name, sessionId) {
+  if (!name || typeof name !== 'string') return send(ws, { type: 'error', message: 'Invalid name.' });
+  const cleanName = name.trim().slice(0, 24);
+  if (!cleanName) return send(ws, { type: 'error', message: 'Please enter a name.' });
+
+  const session = sessions.get(sessionId);
+  if (!session) return send(ws, { type: 'error', message: 'Session not found.' });
+  if (session.players.length !== 1) return send(ws, { type: 'error', message: 'Session is not available.' });
+
+  ws.playerName = cleanName;
+
+  const host = session.players[0];
+  session.players.push({ ws, name: cleanName, color: 'white' });
+
+  ws.sessionId = sessionId;
+  ws.color = 'white';
+
+  send(host.ws, { type: 'start', color: 'black', myName: host.name, opponentName: cleanName });
+  send(ws,      { type: 'start', color: 'white', myName: cleanName, opponentName: host.name });
 }
 
 function handleGetSessions(ws) {
@@ -217,8 +226,6 @@ function handleSurrender(ws) {
 }
 
 function handleDisconnect(ws) {
-  if (queue && queue.ws === ws) queue = null;
-
   if (ws.isObserver) {
     const session = sessions.get(ws.observingSessionId);
     if (session) {
@@ -272,4 +279,26 @@ function collectLine(board, r, c, dr, dc, player) {
   return cells;
 }
 
-module.exports = { wss };
+function getSessionList() {
+  const list = [];
+  for (const [id, session] of sessions) {
+    if (session.gameOver) continue;
+    const host = session.players.find(p => p.color === 'black');
+    const playerCount = session.players.length;
+    const moves = session.board.flat().filter(Boolean).length;
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: playerCount,
+      maxPlayers: 2,
+      observers: session.observers.length,
+      canJoin: playerCount === 1,
+      canObserve: playerCount === 2,
+      status: playerCount === 1 ? 'waiting' : 'playing',
+      label: playerCount === 1 ? 'Waiting for opponent' : `${moves} moves`,
+    });
+  }
+  return list;
+}
+
+module.exports = { wss, getSessionList };

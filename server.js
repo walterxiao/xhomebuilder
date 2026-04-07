@@ -32,16 +32,20 @@ const PAGES = {
 
 const httpServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
-  if (urlPath === '/api/raiden/sessions') {
-    const data = JSON.stringify(raiden.getSessionList());
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(data);
-    return;
-  }
-  if (urlPath === '/api/blockstack/sessions') {
-    const data = JSON.stringify(blockstack.getSessionList());
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(data);
+  const SESSION_APIS = {
+    '/api/connect5/sessions':   () => connect5.getSessionList(),
+    '/api/chess/sessions':      () => chess.getSessionList(),
+    '/api/battleship/sessions': () => battleship.getSessionList(),
+    '/api/airplane/sessions':   () => airplane.getSessionList(),
+    '/api/pictionary/sessions': () => pictionary.getSessionList(),
+    '/api/pingpong/sessions':   () => pingpong.getSessionList(),
+    '/api/blockstack/sessions': () => blockstack.getSessionList(),
+    '/api/raiden/sessions':     () => raiden.getSessionList(),
+    '/api/gofish/sessions':     () => gofish.getSessionList(),
+  };
+  if (SESSION_APIS[urlPath]) {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(SESSION_APIS[urlPath]()));
     return;
   }
   const file = PAGES[urlPath];

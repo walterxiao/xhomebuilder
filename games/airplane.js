@@ -172,6 +172,27 @@ function handleGetSessions(ws) {
   send(ws, { type: 'aj_sessions', sessions: list });
 }
 
+function getSessionList() {
+  const list = [];
+  for (const [id, session] of sessions) {
+    const max = 4;
+    const cur = session.players.length;
+    const host = session.players[0];
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: cur,
+      maxPlayers: max,
+      observers: session.observers.length,
+      canJoin: session.phase === 'lobby' && cur < max,
+      canObserve: true,
+      status: session.phase === 'lobby' ? 'waiting' : 'playing',
+      label: session.phase === 'lobby' ? `${cur}/${max} players` : 'In progress'
+    });
+  }
+  return list.filter(s => s.status !== 'over');
+}
+
 function handleCreate(ws, name) {
   if (!name || typeof name !== 'string') return send(ws, { type: 'aj_error', message: 'Invalid name.' });
   const cleanName = name.trim().slice(0, 24);
@@ -408,4 +429,4 @@ function handleDisconnect(ws) {
   broadcast(session, { type: 'aj_turn', color: session.activeColors[session.currentColorIdx] });
 }
 
-module.exports = { wss, TRACK, PLAYER_CONFIG, ALL_COLORS };
+module.exports = { wss, TRACK, PLAYER_CONFIG, ALL_COLORS, getSessionList };

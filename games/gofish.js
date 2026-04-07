@@ -223,4 +223,25 @@ function handleDC(ws) {
   }
 }
 
-module.exports = { wss };
+function getSessionList() {
+  const list = [];
+  for (const [id, session] of sessions) {
+    if (session.gameOver) continue;
+    const host = session.players[0];
+    const cur = session.players.length;
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: cur,
+      maxPlayers: 4,
+      observers: 0,
+      canJoin: !session.started && cur < 4,
+      canObserve: false,
+      status: session.started ? 'playing' : 'waiting',
+      label: session.started ? 'In progress' : `${cur}/4 players`
+    });
+  }
+  return list;
+}
+
+module.exports = { wss, getSessionList };

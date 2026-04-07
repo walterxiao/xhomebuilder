@@ -132,6 +132,22 @@ h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(2
   #event-log{width:200px;max-width:44vw}
   .opp-box{min-width:100px;padding:9px 10px}
 }
+/* ---- STANDARD SESSIONS LIST ---- */
+.std-host-btn{width:100%;padding:12px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;margin-bottom:14px}
+.std-host-btn:hover{background:#f0c040}
+.std-sess-section{width:100%;margin-top:4px}
+.std-sess-hdr{font-size:.72rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#1a1a3a;color:#9090b0;border-radius:10px;padding:1px 7px;font-size:.68rem}
+.std-sess-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:9px 12px}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.85rem;color:#e0d5c1}
+.std-sess-meta{font-size:.72rem;color:#555577;margin-top:2px}
+.std-no-sess{padding:12px;text-align:center;font-size:.8rem;color:#444466;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px}
+.std-btn-join{padding:5px 12px;background:#2a4a1a;border:1px solid #4a8a3a;border-radius:4px;color:#a0d080;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-join:hover{background:#3a6a2a}
+.std-btn-obs{padding:5px 12px;background:#1a1a3a;border:1px solid #3a3a6a;border-radius:4px;color:#8080c0;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-obs:hover{background:#2a2a5a}
 </style>
 </head>
 <body>
@@ -152,11 +168,12 @@ h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(2
   <div id="lobby-box">
     <label for="name-in">Your Name</label>
     <input id="name-in" type="text" placeholder="enter your name" maxlength="24" autocomplete="off">
-    <label for="sess-in">Session ID <span style="color:#444466;font-size:.7rem">(leave blank to create new)</span></label>
-    <input id="sess-in" type="text" placeholder="e.g. 42" maxlength="10" autocomplete="off" inputmode="numeric">
-    <button class="btn-gold" id="join-btn" style="width:100%">JOIN / CREATE</button>
+    <button class="std-host-btn" id="join-btn">HOST GAME</button>
     <div id="lobby-err"></div>
-    <p class="lobby-hint">Share the session number with friends so they can join.</p>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="std-sess-badge">0</span></div>
+      <div class="std-sess-list" id="std-sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
   </div>
   <a href="/" class="back-link">&#8592; Back to Hub</a>
 </div>
@@ -589,18 +606,54 @@ function renderWaitingPlayers() {
   });
 }
 
+// ── Session polling ──
+let sessPollTimer = null;
+function startSessPoll() {
+  fetchSessions();
+  sessPollTimer = setInterval(fetchSessions, 5000);
+}
+function stopSessPoll() {
+  clearInterval(sessPollTimer);
+  sessPollTimer = null;
+}
+function fetchSessions() {
+  fetch('/api/gofish/sessions').then(r => r.json()).then(renderSessions).catch(() => {});
+}
+function renderSessions(list) {
+  const badge = document.getElementById('std-sess-badge');
+  const container = document.getElementById('std-sess-list');
+  if (!badge || !container) return;
+  badge.textContent = list.length;
+  if (!list.length) { container.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+  container.innerHTML = list.map(s => `
+    <div class="std-sess-row">
+      <div class="std-sess-info">
+        <div class="std-sess-host">${esc(s.hostName)}'s game</div>
+        <div class="std-sess-meta">${s.label} · ${s.status}</div>
+      </div>
+      ${s.canJoin ? `<button class="std-btn-join" onclick="stdJoinSession(${s.id})">Join</button>` : ''}
+    </div>`).join('');
+}
+function stdJoinSession(id) {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll();
+  myName = name;
+  openWs(() => wsSend({ type: 'join', name, sessionId: id }));
+}
+
 // ── Lobby ──
 document.getElementById('join-btn').addEventListener('click', doJoin);
-document.getElementById('sess-in').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
 document.getElementById('name-in').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
 
 function doJoin() {
   const name = document.getElementById('name-in').value.trim();
   if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
-  const sid = document.getElementById('sess-in').value.trim() || null;
   document.getElementById('lobby-err').textContent = '';
+  stopSessPoll();
   myName = name;
-  openWs(() => wsSend({ type: 'join', name, sessionId: sid ? +sid : undefined }));
+  openWs(() => wsSend({ type: 'join', name }));
 }
 
 // ── Waiting ──
@@ -609,6 +662,7 @@ document.getElementById('leave-btn').addEventListener('click', () => {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   gameStarted = false;
   showScreen('lobby');
+  startSessPoll();
 });
 
 document.getElementById('session-id-display').addEventListener('click', () => {
@@ -648,9 +702,12 @@ document.getElementById('play-again-btn').addEventListener('click', () => {
   myHand = []; myBooks = []; players = []; currentTurn = -1;
   selectedRank = null; selectedTarget = null; gameStarted = false;
   document.getElementById('name-in').value = myName;
-  document.getElementById('sess-in').value = '';
   showScreen('lobby');
+  startSessPoll();
 });
+
+// ── Init ──
+startSessPoll();
 
 // ── Name overlay ──
 window.onNameSet = name => { document.getElementById('name-in').value = name; };

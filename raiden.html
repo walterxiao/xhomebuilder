@@ -28,6 +28,28 @@ h1{font-size:2.8rem;font-weight:900;letter-spacing:4px;color:#ffee00;text-shadow
 .plist{width:100%;max-width:300px;display:flex;flex-direction:column;gap:8px}
 .pchip{background:#16213e;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px}
 .pdot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+
+/* ===== STANDARD SESSION LIST ===== */
+.std-host-btn { width:100%;padding:13px;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;transition:background .2s }
+.std-host-btn:hover { background:#f0c040 }
+.std-sess-section { display:flex;flex-direction:column;gap:8px;margin-top:14px }
+.std-sess-hdr { display:flex;align-items:center;justify-content:space-between;font-size:.72rem;letter-spacing:2px;color:#555577;text-transform:uppercase }
+.std-sess-badge { background:#2a2a5a;border-radius:10px;padding:2px 8px;font-size:.68rem;color:#7070a0 }
+.std-sess-list { display:flex;flex-direction:column;gap:7px;max-height:200px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#2a2a5a transparent }
+.std-sess-item { background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:9px 12px;display:flex;align-items:center;gap:8px;transition:border-color .15s }
+.std-sess-item:hover { border-color:#4a4a7a }
+.std-sess-info { flex:1;min-width:0 }
+.std-sess-host { font-size:.88rem;color:#d4af37;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.std-sess-meta { font-size:.72rem;color:#555577;margin-top:2px }
+.std-sess-btns { display:flex;gap:5px;flex-shrink:0 }
+.std-join-btn { padding:5px 11px;background:#d4af37;color:#1a1a2e;border:none;border-radius:3px;font-size:.75rem;font-family:Georgia,serif;font-weight:bold;cursor:pointer }
+.std-join-btn:hover { background:#f0c040 }
+.std-obs-btn { padding:5px 9px;background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:3px;font-size:.75rem;font-family:Georgia,serif;cursor:pointer }
+.std-obs-btn:hover { color:#c0c0e0;border-color:#7070a0 }
+.std-no-sess { font-size:.82rem;color:#444466;font-style:italic;padding:10px 0;text-align:center }
+.std-sess-id-val { font-size:1.8rem;letter-spacing:5px;color:#d4af37;cursor:pointer;user-select:all;display:block;margin:8px 0 4px }
+.std-sess-id-val:hover { text-decoration:underline }
+.std-copy-hint { font-size:.7rem;color:#555577;letter-spacing:1px }
 </style>
 </head>
 <body>
@@ -38,8 +60,11 @@ h1{font-size:2.8rem;font-weight:900;letter-spacing:4px;color:#ffee00;text-shadow
   <button class="btn" onclick="soloPlay()">Solo Play</button>
   <div class="sep">── OR ──</div>
   <input id="pname" class="input" placeholder="Your name" maxlength="16" autocomplete="off">
-  <button class="btn" onclick="createOnline()">Create 2-Player Game</button>
-  <div id="slist-wrap" class="sessions"></div>
+  <button class="std-host-btn" onclick="createOnline()" style="max-width:280px">HOST 2-PLAYER GAME</button>
+  <div class="std-sess-section" style="width:100%;max-width:280px">
+    <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="std-sess-badge">0</span></div>
+    <div class="std-sess-list" id="std-sess-list"><div class="std-no-sess">Loading…</div></div>
+  </div>
   <a href="/" class="btn sec" style="text-align:center;text-decoration:none;margin-top:4px">← Back to Hub</a>
 </div>
 
@@ -110,12 +135,12 @@ function showScreen(id){
 }
 function backToEntry(){
   if(ws){ws.onclose=null;ws.close();ws=null;}
-  gameState='entry';showScreen('se');loadSessions();
+  gameState='entry';showScreen('se');startSessPoll();
 }
 function exitGame(){
   if(ws){ws.onclose=null;ws.close();ws=null;}
   p1=null;p2=null;bullets=[];eBullets=[];enemies=[];powerups=[];particles=[];
-  gameState='entry';mode='solo';showScreen('se');loadSessions();
+  gameState='entry';mode='solo';showScreen('se');startSessPoll();
 }
 function soloPlay(){mode='solo';playerIdx=0;showScreen(null);resize();gameState='title';}
 
@@ -131,28 +156,41 @@ function connect(cb){
 
 function createOnline(){
   const name=document.getElementById('pname').value.trim()||'P1';
+  stopSessPoll();
   connect(()=>wsSend({type:'create',name}));
 }
 function joinOnline(sid){
   const name=document.getElementById('pname').value.trim()||'P2';
+  stopSessPoll();
   connect(()=>wsSend({type:'join',sessionId:sid,name}));
 }
 function startOnline(){wsSend({type:'start'});}
 
-async function loadSessions(){
-  try{
-    const r=await fetch('/api/raiden/sessions');
-    if(!r.ok)return;
-    const list=await r.json();
-    const el=document.getElementById('slist-wrap');
-    if(!list.length){el.innerHTML='<div style="color:#555;font-size:.8rem;text-align:center">No open games yet</div>';return;}
-    el.innerHTML=list.map(s=>`<div class="scard">
-      <div><div class="scard-id">GAME ${s.id}</div><div class="scard-sub">Waiting for Player 2</div></div>
-      <button class="sbtn" onclick="joinOnline('${s.id}')">JOIN</button>
-    </div>`).join('');
-  }catch(_){}
+// ── Standard session polling ──
+let _sessTimer=null;
+function startSessPoll(){fetchSessions();_sessTimer=setInterval(fetchSessions,5000);}
+function stopSessPoll(){clearInterval(_sessTimer);_sessTimer=null;}
+async function fetchSessions(){
+  try{const r=await fetch('/api/raiden/sessions');renderSessions(await r.json());}catch{}
 }
-loadSessions();setInterval(loadSessions,4000);
+function renderSessions(list){
+  const el=document.getElementById('std-sess-list');
+  if(!el)return;
+  const badge=document.getElementById('std-sess-badge');
+  if(badge)badge.textContent=list.length;
+  if(!list.length){el.innerHTML='<div class="std-no-sess">No active games — host one!</div>';return;}
+  el.innerHTML='';
+  list.forEach(s=>{
+    const item=document.createElement('div');
+    item.className='std-sess-item';
+    const hname=String(s.hostName||s.id||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const lbl=String(s.label||s.status||'Waiting for Player 2').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    item.innerHTML=`<div class="std-sess-info"><span class="std-sess-host">${hname}</span><span class="std-sess-meta">${lbl}</span></div><div class="std-sess-btns">${s.canJoin?'<button class="std-join-btn">Join</button>':''}</div>`;
+    if(s.canJoin)item.querySelector('.std-join-btn').onclick=()=>joinOnline(s.id);
+    el.appendChild(item);
+  });
+}
+startSessPoll();
 
 let toastTimer=null;
 function showToast(msg){

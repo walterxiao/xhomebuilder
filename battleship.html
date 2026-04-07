@@ -407,6 +407,28 @@
       cursor: pointer; letter-spacing: 1px;
     }
     #name-overlay button:hover { border-color: #d4af37; background: #1e2e54; }
+
+    /* ===== STANDARD SESSION LIST ===== */
+    .std-host-btn { width:100%;padding:13px;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;transition:background .2s }
+    .std-host-btn:hover { background:#f0c040 }
+    .std-sess-section { display:flex;flex-direction:column;gap:8px;margin-top:14px }
+    .std-sess-hdr { display:flex;align-items:center;justify-content:space-between;font-size:.72rem;letter-spacing:2px;color:#555577;text-transform:uppercase }
+    .std-sess-badge { background:#2a2a5a;border-radius:10px;padding:2px 8px;font-size:.68rem;color:#7070a0 }
+    .std-sess-list { display:flex;flex-direction:column;gap:7px;max-height:200px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#2a2a5a transparent }
+    .std-sess-item { background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:9px 12px;display:flex;align-items:center;gap:8px;transition:border-color .15s }
+    .std-sess-item:hover { border-color:#4a4a7a }
+    .std-sess-info { flex:1;min-width:0 }
+    .std-sess-host { font-size:.88rem;color:#d4af37;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+    .std-sess-meta { font-size:.72rem;color:#555577;margin-top:2px }
+    .std-sess-btns { display:flex;gap:5px;flex-shrink:0 }
+    .std-join-btn { padding:5px 11px;background:#d4af37;color:#1a1a2e;border:none;border-radius:3px;font-size:.75rem;font-family:Georgia,serif;font-weight:bold;cursor:pointer }
+    .std-join-btn:hover { background:#f0c040 }
+    .std-obs-btn { padding:5px 9px;background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:3px;font-size:.75rem;font-family:Georgia,serif;cursor:pointer }
+    .std-obs-btn:hover { color:#c0c0e0;border-color:#7070a0 }
+    .std-no-sess { font-size:.82rem;color:#444466;font-style:italic;padding:10px 0;text-align:center }
+    .std-sess-id-val { font-size:1.8rem;letter-spacing:5px;color:#d4af37;cursor:pointer;user-select:all;display:block;margin:8px 0 4px }
+    .std-sess-id-val:hover { text-decoration:underline }
+    .std-copy-hint { font-size:.7rem;color:#555577;letter-spacing:1px }
   </style>
 </head>
 <body>
@@ -426,9 +448,12 @@
     <h1 class="game-title">Battleship</h1>
     <p class="subtitle">Naval Combat</p>
     <input id="name-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off" />
-    <button id="find-btn" class="btn btn-primary" style="width:100%">Find Game</button>
-    <button id="watch-btn" class="btn btn-secondary" style="width:100%">Watch a Game</button>
-    <a href="/" class="hub-link">&#8592; Back to Hub</a>
+    <button class="std-host-btn" id="find-btn">HOST GAME</button>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="std-sess-badge">0</span></div>
+      <div class="std-sess-list" id="std-sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+    <a href="/" class="hub-link" style="margin-top:8px">&#8592; Back to Hub</a>
   </div>
 </div>
 
@@ -478,6 +503,10 @@
 <div id="screen-waiting" class="screen">
   <div class="spinner"></div>
   <p class="waiting-text">Waiting for opponent&hellip;</p>
+  <div style="text-align:center;margin:8px 0">
+    <span class="std-sess-id-val" id="waiting-session-id">—</span>
+    <span class="std-copy-hint">tap to copy · others join from the lobby</span>
+  </div>
   <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
 </div>
 
@@ -1241,6 +1270,11 @@ function onMessage(evt) {
     case 'bs_waiting':
       showScreen('screen-waiting');
       gamePhase = 'waiting';
+      if (msg.sessionId) {
+        const el = document.getElementById('waiting-session-id');
+        el.textContent = '#' + msg.sessionId;
+        el.onclick = () => navigator.clipboard?.writeText(String(msg.sessionId)).then(() => { const o=el.textContent; el.textContent='Copied!'; setTimeout(()=>el.textContent=o,1200); });
+      }
       break;
 
     case 'bs_start':
@@ -1700,13 +1734,14 @@ document.getElementById('find-btn').addEventListener('click', () => {
   const name = document.getElementById('name-input').value.trim();
   if (!name) { document.getElementById('name-input').focus(); return; }
   myName = name;
+  stopSessPoll();
   connectWS();
   ws.addEventListener('open', () => {
-    ws.send(JSON.stringify({ type: 'bs_join', name }));
+    ws.send(JSON.stringify({ type: 'bs_create', name }));
   });
 });
 
-document.getElementById('watch-btn').addEventListener('click', () => {
+document.getElementById('watch-btn') && document.getElementById('watch-btn').addEventListener('click', () => {
   connectWS();
   ws.addEventListener('open', () => {
     ws.send(JSON.stringify({ type: 'bs_sessions' }));
@@ -1731,6 +1766,7 @@ document.getElementById('cancel-btn').addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
   showScreen('screen-lobby');
   gamePhase = 'lobby';
+  startSessPoll();
 });
 
 document.getElementById('orient-btn').addEventListener('click', () => {
@@ -1774,6 +1810,49 @@ function sendChat() {
   input.value = '';
 }
 
+// ── Standard session polling ──
+let _sessTimer = null;
+function startSessPoll() { fetchSessions(); _sessTimer = setInterval(fetchSessions, 5000); }
+function stopSessPoll()  { clearInterval(_sessTimer); _sessTimer = null; }
+async function fetchSessions() {
+  try { const r = await fetch('/api/battleship/sessions'); renderSessions(await r.json()); } catch {}
+}
+function renderSessions(list) {
+  const el = document.getElementById('std-sess-list');
+  if (!el) return;
+  const badge = document.getElementById('std-sess-badge');
+  if (badge) badge.textContent = list.length;
+  if (!list.length) { el.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+  el.innerHTML = '';
+  list.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'std-sess-item';
+    const hname = String(s.hostName||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const lbl = String(s.label||s.status||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    item.innerHTML = `<div class="std-sess-info"><span class="std-sess-host">${hname}</span><span class="std-sess-meta">${lbl}</span></div><div class="std-sess-btns">${s.canJoin?'<button class="std-join-btn">Join</button>':''}${s.canObserve?'<button class="std-obs-btn">Watch</button>':''}</div>`;
+    if (s.canJoin) item.querySelector('.std-join-btn').onclick = () => stdJoinSession(s.id);
+    if (s.canObserve) item.querySelector('.std-obs-btn').onclick = () => stdObserveSession(s.id);
+    el.appendChild(item);
+  });
+}
+function stdJoinSession(id) {
+  const name = document.getElementById('name-input').value.trim() || window.hubName || '';
+  if (!name) { document.getElementById('name-input').focus(); return; }
+  myName = name;
+  stopSessPoll();
+  connectWS();
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'bs_join', name, sessionId: id }));
+  });
+}
+function stdObserveSession(id) {
+  stopSessPoll();
+  connectWS();
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'bs_observe', sessionId: id }));
+  });
+}
+
 // ── Name overlay + Presence ───────────────────────────────────────────────────
 window.onNameSet = name => { document.getElementById('name-input').value = name; };
 const HUB_PAGE = 'battleship';
@@ -1804,6 +1883,7 @@ const HUB_PAGE = 'battleship';
   } else {
     setTimeout(() => document.getElementById('nov-input').focus(), 50);
   }
+  startSessPoll();
 })();
 </script>
 </body>

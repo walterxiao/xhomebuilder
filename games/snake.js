@@ -187,6 +187,58 @@ function tick(sess) {
   }
 }
 
+// ── Poop merging ──────────────────────────────────────────────────────────────
+// If a connected poop group fills > 2/3 of its bounding rectangle, expand to
+// fill the entire rectangle. Repeat until stable.
+function mergePoop(sess) {
+  const ADJ = [[1,0],[-1,0],[0,1],[0,-1]];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const poopSet = new Set(sess.poops.map(p => `${p.x},${p.y}`));
+    const visited = new Set();
+
+    for (const start of sess.poops) {
+      const sk = `${start.x},${start.y}`;
+      if (visited.has(sk)) continue;
+
+      // BFS to find connected component
+      const comp = [];
+      const q = [start];
+      visited.add(sk);
+      while (q.length) {
+        const c = q.shift();
+        comp.push(c);
+        for (const [dx, dy] of ADJ) {
+          const nk = `${c.x+dx},${c.y+dy}`;
+          if (poopSet.has(nk) && !visited.has(nk)) { visited.add(nk); q.push({x:c.x+dx, y:c.y+dy}); }
+        }
+      }
+
+      const minX = Math.min(...comp.map(p => p.x));
+      const maxX = Math.max(...comp.map(p => p.x));
+      const minY = Math.min(...comp.map(p => p.y));
+      const maxY = Math.max(...comp.map(p => p.y));
+      const area = (maxX - minX + 1) * (maxY - minY + 1);
+
+      // Fill if count > 2/3 of bounding rect
+      if (comp.length * 3 > area * 2) {
+        for (let x = minX; x <= maxX; x++) {
+          for (let y = minY; y <= maxY; y++) {
+            if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
+            const k = `${x},${y}`;
+            if (!poopSet.has(k)) { sess.poops.push({x, y}); poopSet.add(k); changed = true; }
+          }
+        }
+      }
+    }
+  }
+
+  // Remove food covered by (possibly expanded) poops
+  const finalSet = new Set(sess.poops.map(p => `${p.x},${p.y}`));
+  sess.food = sess.food.filter(f => !finalSet.has(`${f.x},${f.y}`));
+}
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 wss.on('connection', ws => {
   let sess = null, me = null;
@@ -241,26 +293,22 @@ wss.on('connection', ws => {
 
     } else if (m.type === 'poop') {
       if (!me || !me.alive || !sess.started || sess.gameOver) return;
-      if (me.body.length < 2) return;
+      if (me.body.length < 2) return;  // need at least head + 1 segment
       const now = Date.now();
       if (now - me.lastPoop < POOP_COOLDOWN_MS) return;
 
-      // Drop poop at the tail position
-      const tail = me.body[me.body.length - 1];
+      // Shorten snake by removing tail, poop at that position
+      const tail = me.body.pop();
       const pos = { x: tail.x, y: tail.y };
 
-      // Check not already occupied by a poop
+      // Skip if a poop already exists there
       const existing = new Set(sess.poops.map(p => `${p.x},${p.y}`));
-      if (existing.has(`${pos.x},${pos.y}`)) return;
-
-      // Poops cannot be connected — reject if any 4-neighbor is already a poop
-      const adj = [[1,0],[-1,0],[0,1],[0,-1]];
-      for (const [dx, dy] of adj) {
-        if (existing.has(`${pos.x+dx},${pos.y+dy}`)) return;
-      }
+      if (existing.has(`${pos.x},${pos.y}`)) { me.body.push(tail); return; }
 
       me.lastPoop = now;
       sess.poops.push(pos);
+      mergePoop(sess);
+
       bcast(sess, { type: 'snake_tick',
         snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
         food: sess.food,

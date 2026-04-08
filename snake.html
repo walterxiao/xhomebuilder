@@ -6,14 +6,14 @@
 <title>Snake · Game Hub</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.screen{display:none;flex-direction:column;align-items:center;width:100%;padding:24px 16px;gap:16px}
+body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+.screen{display:none;flex-direction:column;align-items:center;width:100%;padding:10px 16px 16px;gap:10px}
 .screen.active{display:flex}
 /* ── Title ── */
-.page-title{font-size:2rem;letter-spacing:6px;color:#44ee88;text-transform:uppercase;text-shadow:0 0 20px rgba(68,238,136,.4)}
-.page-sub{font-size:.8rem;color:#446644;letter-spacing:3px;text-transform:uppercase}
+.page-title{font-size:1.6rem;letter-spacing:5px;color:#44ee88;text-transform:uppercase;text-shadow:0 0 20px rgba(68,238,136,.4)}
+.page-sub{font-size:.75rem;color:#446644;letter-spacing:3px;text-transform:uppercase}
 /* ── Lobby box ── */
-.lobby-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:10px;padding:32px 40px;width:min(100%,420px);display:flex;flex-direction:column;gap:12px}
+.lobby-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:10px;padding:16px 20px;width:min(100%,420px);display:flex;flex-direction:column;gap:10px}
 .lb-label{font-size:.82rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:4px}
 .lb-input{width:100%;padding:13px 14px;background:#0a140a;border:1px solid #2a4a2a;border-radius:6px;color:#e0d5c1;font-size:1rem;font-family:inherit;outline:none}
 .lb-input:focus{border-color:#44ee88}
@@ -29,7 +29,7 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .std-sess-section{width:100%}
 .std-sess-hdr{font-size:.72rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}
 .std-sess-badge{background:#0a1a0a;color:#446644;border:1px solid #2a4a2a;border-radius:10px;padding:1px 7px;font-size:.68rem}
-.std-sess-list{display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto}
+.std-sess-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto}
 .std-sess-row{display:flex;align-items:center;gap:8px;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px;padding:9px 12px}
 .std-sess-info{flex:1}
 .std-sess-host{font-size:.85rem;color:#e0d5c1}

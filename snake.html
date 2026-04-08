@@ -273,6 +273,11 @@ function renderGame() {
   ctx.fillStyle = '#060e06';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Boundary line
+  ctx.strokeStyle = '#2a6a2a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
   // Grid dots
   ctx.fillStyle = '#0d180d';
   for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {

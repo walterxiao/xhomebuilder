@@ -314,19 +314,20 @@ function renderGame() {
 
   // Cleaner
   if (gameState.cleaner) {
-    const { x, y } = gameState.cleaner;
-    ctx.fillStyle = '#f0f8ff';
-    ctx.shadowColor = '#88ddff';
+    const { x, y, leaving } = gameState.cleaner;
+    ctx.globalAlpha = leaving ? 0.55 : 1;
+    ctx.fillStyle = leaving ? '#fff8cc' : '#f0f8ff';
+    ctx.shadowColor = leaving ? '#ffdd44' : '#88ddff';
     ctx.shadowBlur = 16;
     ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
     ctx.shadowBlur = 0;
-    // Cross symbol
-    ctx.strokeStyle = '#1166aa';
+    ctx.strokeStyle = leaving ? '#886600' : '#1166aa';
     ctx.lineWidth = Math.max(1, CELL * 0.15);
     ctx.lineCap = 'round';
     const cx = x * CELL + CELL/2, cy = y * CELL + CELL/2, r = CELL * 0.26;
     ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   // Snakes

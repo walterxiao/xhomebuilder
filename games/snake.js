@@ -4,7 +4,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLS = 25, ROWS = 20;
-const TICK_MS = 140;
+const TICK_MS = 200;
 const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 2;
 const INIT_LEN = 4;
@@ -214,7 +214,7 @@ function spawnCleaner(sess) {
   for (let y = 1; y < ROWS-1; y++) { edges.push({x:0,y}); edges.push({x:COLS-1,y}); }
   for (let i = edges.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [edges[i],edges[j]]=[edges[j],edges[i]]; }
   for (const pos of edges) {
-    if (!taken.has(`${pos.x},${pos.y}`)) { sess.cleaner = { x:pos.x, y:pos.y }; return; }
+    if (!taken.has(`${pos.x},${pos.y}`)) { sess.cleaner = { x:pos.x, y:pos.y, leaving:false }; return; }
   }
 }
 
@@ -254,15 +254,43 @@ function cleanerNextStep(sess) {
 }
 
 function moveCleaner(sess) {
-  if (!sess.cleaner || !sess.poops.length) { sess.cleaner = null; return; }
+  if (!sess.cleaner) return;
+  const { x, y, leaving } = sess.cleaner;
+
+  if (leaving) {
+    // Reached the border — exit
+    if (x === 0 || x === COLS-1 || y === 0 || y === ROWS-1) { sess.cleaner = null; return; }
+
+    // Move toward nearest edge, trying each direction in order of proximity
+    const snakeOcc = new Set();
+    for (const p of sess.players) if (p.alive) for (const seg of p.body) snakeOcc.add(`${seg.x},${seg.y}`);
+    const foodOcc = new Set(sess.food.map(f=>`${f.x},${f.y}`));
+    const opts = [
+      { dx:-1, dy:0, d:x }, { dx:1, dy:0, d:COLS-1-x },
+      { dx:0, dy:-1, d:y }, { dx:0, dy:1, d:ROWS-1-y },
+    ].sort((a,b)=>a.d-b.d);
+    for (const { dx, dy } of opts) {
+      const nx=x+dx, ny=y+dy;
+      if (!snakeOcc.has(`${nx},${ny}`) && !foodOcc.has(`${nx},${ny}`)) {
+        sess.cleaner = { x:nx, y:ny, leaving:true };
+        return;
+      }
+    }
+    return; // all blocked — wait
+  }
+
+  // Normal mode: no poops left → start leaving
+  if (!sess.poops.length) { sess.cleaner = { x, y, leaving:true }; return; }
+
   const next = cleanerNextStep(sess);
   if (!next) return; // blocked — wait
-  sess.cleaner = next;
+  sess.cleaner = { x:next.x, y:next.y, leaving:false };
+
   // Remove poop at new position
   const nk = `${next.x},${next.y}`;
   if (sess.poops.some(p=>`${p.x},${p.y}`===nk)) {
     sess.poops = sess.poops.filter(p=>`${p.x},${p.y}`!==nk);
-    if (sess.poops.length === 0) sess.cleaner = null;
+    if (sess.poops.length === 0) sess.cleaner = { x:next.x, y:next.y, leaving:true };
   }
 }
 

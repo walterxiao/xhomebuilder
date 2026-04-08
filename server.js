@@ -12,11 +12,13 @@ const pingpong = require('./games/pingpong');
 const blockstack = require('./games/blockstack');
 const raiden = require('./games/raiden');
 const gofish = require('./games/gofish');
+const snake = require('./games/snake');
 
 const PORT = process.env.PORT || 9753;
 
 const PAGES = {
   '/':           'index.html',
+  '/snake':      'snake.html',
   '/connect5':   'connect5.html',
   '/airplane':   'airplane.html',
   '/battleship': 'battleship.html',
@@ -42,6 +44,7 @@ const httpServer = http.createServer((req, res) => {
     '/api/blockstack/sessions': () => blockstack.getSessionList(),
     '/api/raiden/sessions':     () => raiden.getSessionList(),
     '/api/gofish/sessions':     () => gofish.getSessionList(),
+    '/api/snake/sessions':      () => snake.getSessionList(),
   };
   if (SESSION_APIS[urlPath]) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -97,6 +100,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/gofish') {
     gofish.wss.handleUpgrade(req, socket, head, ws => {
       gofish.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/snake') {
+    snake.wss.handleUpgrade(req, socket, head, ws => {
+      snake.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

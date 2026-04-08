@@ -61,10 +61,13 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 #canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative;background:#060e06}
 #canvas{display:block;image-rendering:pixelated}
 /* ── Mobile controls ── */
-#dpad{flex-shrink:0;display:grid;grid-template-areas:". up ." "left . right" ". down .";gap:6px;padding:10px 0 max(12px,env(safe-area-inset-bottom));background:#0a140a;border-top:2px solid #1a3a1a;justify-content:center}
+#dpad{flex-shrink:0;display:grid;grid-template-areas:". up ." "left poop right" ". down .";gap:6px;padding:10px 0 max(12px,env(safe-area-inset-bottom));background:#0a140a;border-top:2px solid #1a3a1a;justify-content:center}
 .dpad-btn{width:76px;height:68px;background:#162816;border:2px solid #2a4a2a;border-radius:12px;font-size:1.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#44ee88;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .08s}
 .dpad-btn:active,.dpad-btn.pressed{background:#2a5a2a;border-color:#44ee88}
 #dpad-up{grid-area:up}#dpad-left{grid-area:left}#dpad-right{grid-area:right}#dpad-down{grid-area:down}
+#dpad-poop{grid-area:poop;background:#1a0f00;border-color:#4a2a00;font-size:1.6rem}
+#dpad-poop:active,#dpad-poop.pressed{background:#3a1f00;border-color:#8a5a00}
+#dpad-poop.cooldown{opacity:.4;pointer-events:none}
 @media(min-width:600px){#dpad{display:none}}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
 /* ── Game over ── */
@@ -125,6 +128,7 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
   <div id="dpad">
     <button class="dpad-btn" id="dpad-up">▲</button>
     <button class="dpad-btn" id="dpad-left">◀</button>
+    <button class="dpad-btn" id="dpad-poop">💩</button>
     <button class="dpad-btn" id="dpad-right">▶</button>
     <button class="dpad-btn" id="dpad-down">▼</button>
   </div>
@@ -198,7 +202,7 @@ function handle(msg) {
       break;
 
     case 'snake_start':
-      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, scores: msg.scores };
+      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], scores: msg.scores };
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       initCanvas(msg.cols, msg.rows);
@@ -211,6 +215,7 @@ function handle(msg) {
       if (!gameState) break;
       gameState.snakes = msg.snakes;
       gameState.food = msg.food;
+      gameState.poops = msg.poops || gameState.poops;
       gameState.scores = msg.scores;
       renderScoreBar();
       renderGame();
@@ -272,6 +277,19 @@ function renderGame() {
   ctx.fillStyle = '#0d180d';
   for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {
     ctx.fillRect(x * CELL + CELL/2 - 1, y * CELL + CELL/2 - 1, 2, 2);
+  }
+
+  // Poops — dark brown squares with a slightly rounded look
+  ctx.shadowBlur = 0;
+  for (const p of (gameState.poops || [])) {
+    const pad = Math.max(1, Math.floor(CELL * 0.15));
+    const sz = CELL - pad * 2;
+    ctx.fillStyle = '#5a3010';
+    ctx.fillRect(p.x * CELL + pad, p.y * CELL + pad, sz, sz);
+    // Lighter center highlight
+    ctx.fillStyle = '#7a4820';
+    const inner = Math.max(1, Math.floor(sz * 0.35));
+    ctx.fillRect(p.x * CELL + pad + Math.floor(sz*0.2), p.y * CELL + pad + Math.floor(sz*0.2), inner, inner);
   }
 
   // Food
@@ -363,7 +381,19 @@ document.addEventListener('keydown', e => {
                 w:'up', s:'down', a:'left', d:'right',
                 W:'up', S:'down', A:'left', D:'right' };
   if (map[e.key]) { e.preventDefault(); sendDir(map[e.key]); }
+  if (e.key === ' ' || e.key === 'p' || e.key === 'P') { e.preventDefault(); doPoop(); }
 });
+
+// Poop action
+let poopCooldown = false;
+function doPoop() {
+  if (poopCooldown || isObs) return;
+  wsSend({ type: 'poop' });
+  poopCooldown = true;
+  const btn = document.getElementById('dpad-poop');
+  btn.classList.add('cooldown');
+  setTimeout(() => { poopCooldown = false; btn.classList.remove('cooldown'); }, 2500);
+}
 
 // D-pad — use touchstart for instant response on iOS (no 300ms delay)
 function bindDpad(id, dir) {
@@ -375,6 +405,10 @@ bindDpad('dpad-up', 'up');
 bindDpad('dpad-down', 'down');
 bindDpad('dpad-left', 'left');
 bindDpad('dpad-right', 'right');
+
+const poopBtn = document.getElementById('dpad-poop');
+poopBtn.addEventListener('touchstart', e => { e.preventDefault(); doPoop(); }, { passive: false });
+poopBtn.addEventListener('click', doPoop);
 
 // Swipe on canvas
 let touchStart = null;

@@ -9,6 +9,7 @@ const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 2;
 const INIT_LEN = 4;
 const WIN_BONUS = 5;
+const POOP_COOLDOWN_MS = 2500;
 
 const DIRS = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
 const OPPOSITE = { up:'down', down:'up', left:'right', right:'left' };
@@ -38,7 +39,7 @@ let nextId = 1;
 const sessions = new Map();
 
 function mkSess() {
-  const s = { id: nextId++, players: [], obs: [], food: [], started: false, gameOver: false, interval: null };
+  const s = { id: nextId++, players: [], obs: [], food: [], poops: [], started: false, gameOver: false, interval: null };
   sessions.set(s.id, s);
   return s;
 }
@@ -47,7 +48,8 @@ function mkSess() {
 function occupiedSet(sess) {
   const s = new Set();
   for (const p of sess.players) if (p.alive) for (const c of p.body) s.add(`${c.x},${c.y}`);
-  for (const f of sess.food) s.add(`${f.x},${f.y}`);
+  for (const f of sess.food)  s.add(`${f.x},${f.y}`);
+  for (const p of sess.poops) s.add(`${p.x},${p.y}`);
   return s;
 }
 
@@ -68,6 +70,7 @@ function startGame(sess) {
   sess.started = true;
   sess.gameOver = false;
   sess.food = [];
+  sess.poops = [];
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -87,6 +90,7 @@ function startGame(sess) {
     players: sess.players.map((p, i) => ({ name: p.name, color: p.color, idx: i })),
     snakes: sess.players.map(p => ({ body: p.body, alive: true })),
     food: sess.food,
+    poops: [],
     scores: sess.players.map(() => 0),
   });
 
@@ -105,9 +109,11 @@ function tick(sess) {
     newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p });
   }
 
-  // 2. Wall collisions
+  // 2. Wall + poop collisions
+  const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
   for (const h of newHeads) {
     if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS) h.p.alive = false;
+    else if (poopKeys.has(`${h.x},${h.y}`)) h.p.alive = false;
   }
 
   // 3. Body collision (against current bodies excluding tail — tail will move away unless food eaten)
@@ -157,6 +163,7 @@ function tick(sess) {
     type: 'snake_tick',
     snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
     food: sess.food,
+    poops: sess.poops,
     scores: sess.players.map(p => p.score),
     aliveCount: alive.length,
   });
@@ -192,7 +199,7 @@ wss.on('connection', ws => {
       const name = String(m.name || '').trim().slice(0, 24);
       if (!name) return;
       sess = mkSess();
-      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
+      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, lastPoop: 0 };
       sess.players.push(me);
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
@@ -205,7 +212,7 @@ wss.on('connection', ws => {
       if (target.started) return send(ws, { type: 'snake_err', message: 'Game already started.' });
       if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
-      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
+      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, lastPoop: 0 };
       sess.players.push(me);
       bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
@@ -232,6 +239,35 @@ wss.on('connection', ws => {
       if (!sess || !me || sess.players[0] !== me || !sess.gameOver) return;
       startGame(sess);
 
+    } else if (m.type === 'poop') {
+      if (!me || !me.alive || !sess.started || sess.gameOver) return;
+      if (me.body.length < 2) return;
+      const now = Date.now();
+      if (now - me.lastPoop < POOP_COOLDOWN_MS) return;
+
+      // Drop poop at the tail position
+      const tail = me.body[me.body.length - 1];
+      const pos = { x: tail.x, y: tail.y };
+
+      // Check not already occupied by a poop
+      const existing = new Set(sess.poops.map(p => `${p.x},${p.y}`));
+      if (existing.has(`${pos.x},${pos.y}`)) return;
+
+      // Poops cannot be connected — reject if any 4-neighbor is already a poop
+      const adj = [[1,0],[-1,0],[0,1],[0,-1]];
+      for (const [dx, dy] of adj) {
+        if (existing.has(`${pos.x+dx},${pos.y+dy}`)) return;
+      }
+
+      me.lastPoop = now;
+      sess.poops.push(pos);
+      bcast(sess, { type: 'snake_tick',
+        snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
+        food: sess.food,
+        poops: sess.poops,
+        scores: sess.players.map(p => p.score),
+        aliveCount: sess.players.filter(p => p.alive).length,
+      });
     }
   });
 

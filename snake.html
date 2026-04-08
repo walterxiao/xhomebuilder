@@ -202,7 +202,7 @@ function handle(msg) {
       break;
 
     case 'snake_start':
-      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], scores: msg.scores };
+      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, scores: msg.scores };
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       initCanvas(msg.cols, msg.rows);
@@ -216,6 +216,7 @@ function handle(msg) {
       gameState.snakes = msg.snakes;
       gameState.food = msg.food;
       gameState.poops = msg.poops || gameState.poops;
+      gameState.cleaner = msg.cleaner !== undefined ? msg.cleaner : gameState.cleaner;
       gameState.scores = msg.scores;
       renderScoreBar();
       renderGame();
@@ -309,6 +310,23 @@ function renderGame() {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
+  }
+
+  // Cleaner
+  if (gameState.cleaner) {
+    const { x, y } = gameState.cleaner;
+    ctx.fillStyle = '#f0f8ff';
+    ctx.shadowColor = '#88ddff';
+    ctx.shadowBlur = 16;
+    ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
+    ctx.shadowBlur = 0;
+    // Cross symbol
+    ctx.strokeStyle = '#1166aa';
+    ctx.lineWidth = Math.max(1, CELL * 0.15);
+    ctx.lineCap = 'round';
+    const cx = x * CELL + CELL/2, cy = y * CELL + CELL/2, r = CELL * 0.26;
+    ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
   }
 
   // Snakes

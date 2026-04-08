@@ -39,7 +39,9 @@ let nextId = 1;
 const sessions = new Map();
 
 function mkSess() {
-  const s = { id: nextId++, players: [], obs: [], food: [], poops: [], started: false, gameOver: false, interval: null };
+  const s = { id: nextId++, players: [], obs: [], food: [], poops: [],
+    cleaner: null, cleanerTickCount: 0, cleanerTimer: null,
+    started: false, gameOver: false, interval: null };
   sessions.set(s.id, s);
   return s;
 }
@@ -71,6 +73,10 @@ function startGame(sess) {
   sess.gameOver = false;
   sess.food = [];
   sess.poops = [];
+  sess.cleaner = null;
+  sess.cleanerTickCount = 0;
+  if (sess.cleanerTimer) clearInterval(sess.cleanerTimer);
+  sess.cleanerTimer = setInterval(() => spawnCleaner(sess), 30000);
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -91,6 +97,7 @@ function startGame(sess) {
     snakes: sess.players.map(p => ({ body: p.body, alive: true })),
     food: sess.food,
     poops: [],
+    cleaner: null,
     scores: sess.players.map(() => 0),
   });
 
@@ -109,11 +116,12 @@ function tick(sess) {
     newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p });
   }
 
-  // 2. Wall + poop collisions
+  // 2. Wall + poop + cleaner collisions
   const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
   for (const h of newHeads) {
     if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS) h.p.alive = false;
     else if (poopKeys.has(`${h.x},${h.y}`)) h.p.alive = false;
+    else if (sess.cleaner && h.x === sess.cleaner.x && h.y === sess.cleaner.y) h.p.alive = false;
   }
 
   // 3. Body collision (against current bodies excluding tail — tail will move away unless food eaten)
@@ -155,6 +163,10 @@ function tick(sess) {
 
   spawnFood(sess);
 
+  // Move cleaner every 2 ticks
+  sess.cleanerTickCount++;
+  if (sess.cleaner && sess.cleanerTickCount % 2 === 0) moveCleaner(sess);
+
   const alive = sess.players.filter(p => p.alive);
   const total = sess.players.length;
   const ended = total <= 1 ? alive.length === 0 : alive.length <= 1;
@@ -164,6 +176,7 @@ function tick(sess) {
     snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
     food: sess.food,
     poops: sess.poops,
+    cleaner: sess.cleaner,
     scores: sess.players.map(p => p.score),
     aliveCount: alive.length,
   });
@@ -172,6 +185,7 @@ function tick(sess) {
     clearInterval(sess.interval);
     sess.interval = null;
     sess.gameOver = true;
+    sess.cleaner = null;
     let winner = null;
     if (alive.length === 1) { alive[0].score += WIN_BONUS; winner = alive[0].name; }
     else {
@@ -184,6 +198,71 @@ function tick(sess) {
       winner,
       scores: sess.players.map(p => ({ name: p.name, color: p.color, score: p.score })),
     });
+  }
+}
+
+// ── Cleaner ───────────────────────────────────────────────────────────────────
+function spawnCleaner(sess) {
+  if (!sess.started || sess.gameOver || sess.cleaner || !sess.poops.length) return;
+  const snakeOcc = new Set();
+  for (const p of sess.players) if (p.alive) for (const seg of p.body) snakeOcc.add(`${seg.x},${seg.y}`);
+  const taken = new Set([...snakeOcc, ...sess.food.map(f=>`${f.x},${f.y}`), ...sess.poops.map(p=>`${p.x},${p.y}`)]);
+
+  // Prefer edge cells (dramatic entry from border)
+  const edges = [];
+  for (let x = 0; x < COLS; x++) { edges.push({x,y:0}); edges.push({x,y:ROWS-1}); }
+  for (let y = 1; y < ROWS-1; y++) { edges.push({x:0,y}); edges.push({x:COLS-1,y}); }
+  for (let i = edges.length-1; i>0; i--) { const j=Math.floor(Math.random()*(i+1)); [edges[i],edges[j]]=[edges[j],edges[i]]; }
+  for (const pos of edges) {
+    if (!taken.has(`${pos.x},${pos.y}`)) { sess.cleaner = { x:pos.x, y:pos.y }; return; }
+  }
+}
+
+// BFS from cleaner to nearest poop, avoiding snake bodies and food; returns next step or null
+function cleanerNextStep(sess) {
+  if (!sess.cleaner || !sess.poops.length) return null;
+  const { x, y } = sess.cleaner;
+  const start = `${x},${y}`;
+  const snakeOcc = new Set();
+  for (const p of sess.players) if (p.alive) for (const seg of p.body) snakeOcc.add(`${seg.x},${seg.y}`);
+  const foodOcc = new Set(sess.food.map(f=>`${f.x},${f.y}`));
+  const poopKeys = new Set(sess.poops.map(p=>`${p.x},${p.y}`));
+  const ADJ = [[1,0],[-1,0],[0,1],[0,-1]];
+  const parent = new Map([[start, null]]);
+  const queue = [start];
+  let found = null;
+  bfs: while (queue.length) {
+    const k = queue.shift();
+    const [cx,cy] = k.split(',').map(Number);
+    for (const [dx,dy] of ADJ) {
+      const nx=cx+dx, ny=cy+dy;
+      if (nx<0||nx>=COLS||ny<0||ny>=ROWS) continue;
+      const nk=`${nx},${ny}`;
+      if (parent.has(nk)) continue;
+      if (snakeOcc.has(nk)||foodOcc.has(nk)) continue;  // blocked — cleaner stops
+      parent.set(nk, k);
+      if (poopKeys.has(nk)) { found=nk; break bfs; }
+      queue.push(nk);
+    }
+  }
+  if (!found) return null;
+  // Trace back to find the first step from start
+  let cur = found;
+  while (parent.get(cur) !== start) { cur = parent.get(cur); if (!cur) return null; }
+  const [fx,fy] = cur.split(',').map(Number);
+  return { x:fx, y:fy };
+}
+
+function moveCleaner(sess) {
+  if (!sess.cleaner || !sess.poops.length) { sess.cleaner = null; return; }
+  const next = cleanerNextStep(sess);
+  if (!next) return; // blocked — wait
+  sess.cleaner = next;
+  // Remove poop at new position
+  const nk = `${next.x},${next.y}`;
+  if (sess.poops.some(p=>`${p.x},${p.y}`===nk)) {
+    sess.poops = sess.poops.filter(p=>`${p.x},${p.y}`!==nk);
+    if (sess.poops.length === 0) sess.cleaner = null;
   }
 }
 
@@ -325,8 +404,10 @@ wss.on('connection', ws => {
       me.alive = false;
       if (!sess.started || sess.gameOver) {
         sess.players = sess.players.filter(p => p !== me);
-        if (sess.players.length === 0) { sessions.delete(sess.id); }
-        else bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+        if (sess.players.length === 0) {
+          if (sess.cleanerTimer) clearInterval(sess.cleanerTimer);
+          sessions.delete(sess.id);
+        } else bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       }
     } else {
       sess.obs = sess.obs.filter(o => o.ws !== ws);

@@ -14,16 +14,16 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .page-sub{font-size:.8rem;color:#446644;letter-spacing:3px;text-transform:uppercase}
 /* ── Lobby box ── */
 .lobby-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:10px;padding:32px 40px;width:min(100%,420px);display:flex;flex-direction:column;gap:12px}
-.lb-label{font-size:.72rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:2px}
-.lb-input{width:100%;padding:10px 12px;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px;color:#e0d5c1;font-size:.95rem;font-family:inherit;outline:none}
+.lb-label{font-size:.82rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:4px}
+.lb-input{width:100%;padding:13px 14px;background:#0a140a;border:1px solid #2a4a2a;border-radius:6px;color:#e0d5c1;font-size:1rem;font-family:inherit;outline:none}
 .lb-input:focus{border-color:#44ee88}
-.lb-err{min-height:16px;font-size:.8rem;color:#ee4444;text-align:center}
+.lb-err{min-height:18px;font-size:.88rem;color:#ee4444;text-align:center}
 /* ── Buttons ── */
-.btn-green{width:100%;padding:12px;background:#44ee88;color:#0a1a0a;border:none;border-radius:6px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
+.btn-green{width:100%;padding:14px;background:#44ee88;color:#0a1a0a;border:none;border-radius:8px;font-size:1rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
 .btn-green:hover{background:#66ffaa}
-.btn-ghost{width:100%;padding:10px;background:transparent;color:#446644;border:1px solid #2a4a2a;border-radius:6px;font-size:.85rem;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s}
+.btn-ghost{width:100%;padding:12px;background:transparent;color:#446644;border:1px solid #2a4a2a;border-radius:8px;font-size:.92rem;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s}
 .btn-ghost:hover{border-color:#44ee88;color:#44ee88}
-.back-link{font-size:.75rem;color:#334433;letter-spacing:2px;text-decoration:none;text-transform:uppercase;transition:color .2s}
+.back-link{font-size:.82rem;color:#334433;letter-spacing:2px;text-decoration:none;text-transform:uppercase;transition:color .2s}
 .back-link:hover{color:#44ee88}
 /* ── Std sessions ── */
 .std-sess-section{width:100%}
@@ -52,22 +52,22 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .wait-msg{font-size:.82rem;color:#446644;margin-top:8px}
 /* ── Game screen ── */
 #screen-game{padding:0;gap:0;width:100%;height:100vh;height:100dvh;overflow:hidden;background:#060e06}
-#score-bar{flex-shrink:0;background:#0a140a;border-bottom:1px solid #1a3a1a;display:flex;align-items:center;gap:4px;padding:6px 12px;flex-wrap:wrap;min-height:44px}
-.score-chip{display:flex;align-items:center;gap:6px;background:#0d1a0d;border-radius:20px;padding:4px 10px;border:1px solid #1a3a1a;font-size:.82rem}
-.sc-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.sc-name{color:#c0d0c0;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sc-val{color:#44ee88;font-weight:bold;min-width:20px;text-align:right}
+#score-bar{flex-shrink:0;background:#0a140a;border-bottom:1px solid #1a3a1a;display:flex;align-items:center;gap:6px;padding:8px 14px;flex-wrap:wrap;min-height:52px}
+.score-chip{display:flex;align-items:center;gap:8px;background:#0d1a0d;border-radius:20px;padding:6px 14px;border:1px solid #1a3a1a;font-size:1rem}
+.sc-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.sc-name{color:#c0d0c0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-val{color:#44ee88;font-weight:bold;min-width:24px;text-align:right}
 .score-chip.dead{opacity:.4}
-#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative}
+#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative;background:#060e06}
 #canvas{display:block;image-rendering:pixelated}
 /* ── Mobile controls ── */
-#dpad{flex-shrink:0;display:grid;grid-template-areas:". up ." "left . right" ". down .";gap:4px;padding:8px 0 max(8px,env(safe-area-inset-bottom));background:#0a140a;border-top:1px solid #1a3a1a;justify-content:center}
-.dpad-btn{width:56px;height:50px;background:#1a2a1a;border:1px solid #2a4a2a;border-radius:8px;font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#44ee88;user-select:none;-webkit-user-select:none;touch-action:none}
-.dpad-btn:active,.dpad-btn.pressed{background:#2a4a2a}
+#dpad{flex-shrink:0;display:grid;grid-template-areas:". up ." "left . right" ". down .";gap:6px;padding:10px 0 max(12px,env(safe-area-inset-bottom));background:#0a140a;border-top:2px solid #1a3a1a;justify-content:center}
+.dpad-btn{width:76px;height:68px;background:#162816;border:2px solid #2a4a2a;border-radius:12px;font-size:1.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#44ee88;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .08s}
+.dpad-btn:active,.dpad-btn.pressed{background:#2a5a2a;border-color:#44ee88}
 #dpad-up{grid-area:up}#dpad-left{grid-area:left}#dpad-right{grid-area:right}#dpad-down{grid-area:down}
 @media(min-width:600px){#dpad{display:none}}
 /* ── Chat ── */
-#chat-fab{position:fixed;bottom:130px;right:12px;width:42px;height:42px;border-radius:50%;background:#1a2a1a;color:#44ee88;font-size:1.1rem;border:1px solid #2a4a2a;cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
+#chat-fab{position:fixed;bottom:250px;right:14px;width:48px;height:48px;border-radius:50%;background:#1a2a1a;color:#44ee88;font-size:1.3rem;border:2px solid #2a4a2a;cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
 #chat-fab.notif{background:#44ee88;color:#0a1a0a;animation:pulse .5s ease-in-out 2}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
 @media(min-width:600px){#chat-fab{bottom:16px}}
@@ -278,11 +278,13 @@ const ctx = canvas.getContext('2d');
 let CELL = 16;
 
 function initCanvas(cols, rows) {
-  const wrap = document.getElementById('canvas-wrap');
-  const maxW = wrap.clientWidth;
-  const maxH = wrap.clientHeight;
+  const isMobile = window.innerWidth < 600;
+  const scoreH = document.getElementById('score-bar').offsetHeight || 52;
+  const dpadH  = isMobile ? (document.getElementById('dpad').offsetHeight || 240) : 0;
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight - scoreH - dpadH - 4;
   CELL = Math.floor(Math.min(maxW / cols, maxH / rows));
-  if (CELL < 6) CELL = 6;
+  if (CELL < 8) CELL = 8;
   canvas.width  = cols * CELL;
   canvas.height = rows * CELL;
 }
@@ -402,11 +404,16 @@ document.addEventListener('keydown', e => {
   if (map[e.key]) { e.preventDefault(); sendDir(map[e.key]); }
 });
 
-// D-pad
-document.getElementById('dpad-up').addEventListener('click', () => sendDir('up'));
-document.getElementById('dpad-down').addEventListener('click', () => sendDir('down'));
-document.getElementById('dpad-left').addEventListener('click', () => sendDir('left'));
-document.getElementById('dpad-right').addEventListener('click', () => sendDir('right'));
+// D-pad — use touchstart for instant response on iOS (no 300ms delay)
+function bindDpad(id, dir) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', e => { e.preventDefault(); sendDir(dir); }, { passive: false });
+  el.addEventListener('click', () => sendDir(dir));
+}
+bindDpad('dpad-up', 'up');
+bindDpad('dpad-down', 'down');
+bindDpad('dpad-left', 'left');
+bindDpad('dpad-right', 'right');
 
 // Swipe on canvas
 let touchStart = null;

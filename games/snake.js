@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 const wss = new WebSocketServer({ noServer: true });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const COLS = 40, ROWS = 28;
+const COLS = 25, ROWS = 20;
 const TICK_MS = 140;
 const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 2;
@@ -14,10 +14,10 @@ const DIRS = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
 const OPPOSITE = { up:'down', down:'up', left:'right', right:'left' };
 const COLORS = ['#44aaff','#ffaa22','#44ee88','#ff4488'];
 const START = [
-  { x:4,  y:4,        dir:'right' },
-  { x:COLS-5, y:ROWS-5, dir:'left'  },
-  { x:COLS-5, y:4,      dir:'down'  },
-  { x:4,  y:ROWS-5,   dir:'up'    },
+  { x:3,  y:3,        dir:'right' },
+  { x:COLS-4, y:ROWS-4, dir:'left'  },
+  { x:COLS-4, y:3,      dir:'down'  },
+  { x:3,  y:ROWS-4,   dir:'up'    },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

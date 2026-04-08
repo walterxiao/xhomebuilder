@@ -232,11 +232,6 @@ wss.on('connection', ws => {
       if (!sess || !me || sess.players[0] !== me || !sess.gameOver) return;
       startGame(sess);
 
-    } else if (m.type === 'chat') {
-      if (!sess) return;
-      const text = String(m.text || '').trim().slice(0, 200);
-      if (!text) return;
-      bcast(sess, { type: 'chat', name: me ? me.name : 'Observer', text });
     }
   });
 

@@ -66,22 +66,7 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .dpad-btn:active,.dpad-btn.pressed{background:#2a5a2a;border-color:#44ee88}
 #dpad-up{grid-area:up}#dpad-left{grid-area:left}#dpad-right{grid-area:right}#dpad-down{grid-area:down}
 @media(min-width:600px){#dpad{display:none}}
-/* ── Chat ── */
-#chat-fab{position:fixed;bottom:250px;right:14px;width:48px;height:48px;border-radius:50%;background:#1a2a1a;color:#44ee88;font-size:1.3rem;border:2px solid #2a4a2a;cursor:pointer;z-index:50;display:flex;align-items:center;justify-content:center}
-#chat-fab.notif{background:#44ee88;color:#0a1a0a;animation:pulse .5s ease-in-out 2}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
-@media(min-width:600px){#chat-fab{bottom:16px}}
-#chat-panel{position:fixed;bottom:0;right:0;width:min(100vw,300px);height:240px;background:#0f1f0f;border-top:2px solid #44ee88;border-left:2px solid #44ee88;border-radius:12px 0 0 0;display:none;flex-direction:column;z-index:49}
-#chat-panel.open{display:flex}
-#chat-close{padding:7px 12px;font-size:.78rem;color:#446644;cursor:pointer;text-align:right;border-bottom:1px solid #1a3a1a}
-#chat-close:hover{color:#44ee88}
-#chat-msgs{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
-.cmsg{font-size:.8rem;color:#c0d0c0;line-height:1.4;word-break:break-word}
-.cmsg-name{font-weight:bold}
-#chat-row{display:flex;gap:4px;padding:7px 8px;border-top:1px solid #1a3a1a}
-#chat-inp{flex:1;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px;color:#e0d5c1;padding:5px 8px;font-size:.82rem;font-family:inherit;outline:none}
-#chat-inp:focus{border-color:#44ee88}
-#chat-send{background:#44ee88;color:#0a1a0a;border:none;border-radius:4px;padding:5px 10px;font-size:.82rem;cursor:pointer;font-weight:bold}
 /* ── Game over ── */
 #over-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:12px;padding:36px 44px;text-align:center;max-width:360px;width:90vw}
 #over-title{font-size:1.4rem;letter-spacing:4px;color:#44ee88;margin-bottom:6px}
@@ -142,15 +127,6 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <button class="dpad-btn" id="dpad-left">◀</button>
     <button class="dpad-btn" id="dpad-right">▶</button>
     <button class="dpad-btn" id="dpad-down">▼</button>
-  </div>
-  <button id="chat-fab">💬</button>
-  <div id="chat-panel">
-    <div id="chat-close">✕</div>
-    <div id="chat-msgs"></div>
-    <div id="chat-row">
-      <input id="chat-inp" placeholder="Message…" maxlength="200" autocomplete="off">
-      <button id="chat-send">↑</button>
-    </div>
   </div>
 </div>
 
@@ -250,9 +226,6 @@ function handle(msg) {
       document.getElementById('lb-err').textContent = msg.message;
       break;
 
-    case 'chat':
-      addChat(msg.name, msg.text);
-      break;
   }
 }
 
@@ -415,34 +388,6 @@ canvas.addEventListener('touchend', e => {
   else sendDir(dy > 0 ? 'down' : 'up');
   touchStart = null;
 }, { passive: true });
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
-const chatPanel = document.getElementById('chat-panel');
-document.getElementById('chat-fab').addEventListener('click', () => {
-  chatPanel.classList.toggle('open');
-  document.getElementById('chat-fab').classList.remove('notif');
-});
-document.getElementById('chat-close').addEventListener('click', () => chatPanel.classList.remove('open'));
-document.getElementById('chat-send').addEventListener('click', sendChat);
-document.getElementById('chat-inp').addEventListener('keydown', e => { if (e.key === 'Enter') { e.stopPropagation(); sendChat(); } });
-
-function sendChat() {
-  const inp = document.getElementById('chat-inp');
-  const text = inp.value.trim();
-  if (!text) return;
-  wsSend({ type: 'chat', text });
-  inp.value = '';
-}
-
-function addChat(name, text) {
-  const msgs = document.getElementById('chat-msgs');
-  const d = document.createElement('div');
-  d.className = 'cmsg';
-  d.innerHTML = `<span class="cmsg-name" style="color:#44ee88">${esc(name)}</span> ${esc(text)}`;
-  msgs.appendChild(d);
-  msgs.scrollTop = msgs.scrollHeight;
-  if (!chatPanel.classList.contains('open')) document.getElementById('chat-fab').classList.add('notif');
-}
 
 // ── Session polling ───────────────────────────────────────────────────────────
 let pollTimer = null;

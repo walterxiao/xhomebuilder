@@ -343,19 +343,7 @@ function renderGame() {
       ctx.fillRect(ex + CELL*0.35, ey, 2, 2);
     }
 
-    // Name label near head
-    if (sn.body.length > 0 && players[i]) {
-      const h = sn.body[0];
-      ctx.font = `bold ${Math.max(9, CELL - 2)}px Arial`;
-      ctx.fillStyle = alive ? color : color + '66';
-      ctx.textAlign = 'center';
-      ctx.fillText(players[i].name.slice(0, 8),
-        h.x * CELL + CELL/2,
-        h.y * CELL - 3
-      );
-    }
   }
-  ctx.textAlign = 'left';
 }
 
 // ── Score bar ─────────────────────────────────────────────────────────────────

@@ -4,7 +4,8 @@ const wss = new WebSocketServer({ noServer: true });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLS = 25, ROWS = 20;
-const TICK_MS = 300;
+const TICK_MS = 100;
+const MOVE_EVERY = 3;   // snakes advance 1 cell every MOVE_EVERY ticks = 300ms
 const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 1;
 const INIT_LEN = 4;
@@ -82,6 +83,7 @@ function startGame(sess) {
   sess.elephant = null;
   sess.elephantCount = 0;
   sess.elephantPoopCols = null;
+  sess.tickCount = 0;
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -124,107 +126,112 @@ function applyCollision(p) {
 
 // ── Game tick ─────────────────────────────────────────────────────────────────
 function tick(sess) {
-  // 1. Apply direction and compute new heads (frozen snakes don't move)
-  const newHeads = [];
-  for (const p of sess.players) {
-    if (!p.alive || p.frozen > 0) continue;
-    p.dir = p.nextDir;
-    const [dx, dy] = DIRS[p.dir];
-    newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p, skip: false });
-  }
+  sess.tickCount++;
+  const doMove = (sess.tickCount % MOVE_EVERY === 0);
 
-  // 2. Wall + poop + cleaner + elephant collisions → shrink, don't move
-  const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
-  for (const h of newHeads) {
-    const hitElephant = sess.elephant &&
-      h.x >= sess.elephant.lx && h.x < sess.elephant.lx + sess.elephant.size &&
-      h.y >= sess.elephant.ly && h.y < sess.elephant.ly + sess.elephant.size;
-    if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS ||
-        poopKeys.has(`${h.x},${h.y}`) ||
-        (sess.cleaner && !sess.cleaner.leaving && h.x === sess.cleaner.x && h.y === sess.cleaner.y) ||
-        hitElephant) {
-      applyCollision(h.p);
-      h.skip = true;
-    }
-  }
-
-  // 3. Body collision — build occupied set accounting for which snakes aren't moving
-  const foodKeys = new Set(sess.food.map(f => `${f.x},${f.y}`));
-  const bodyOcc = new Set();
-  for (const p of sess.players) {
-    if (!p.alive) continue;
-    const h = newHeads.find(hh => hh.p === p);
-    if (!h || h.skip) {
-      for (const seg of p.body) bodyOcc.add(`${seg.x},${seg.y}`);
-    } else {
-      const willEat = foodKeys.has(`${h.x},${h.y}`);
-      const end = willEat ? p.body.length : p.body.length - 1;
-      for (let i = 0; i < end; i++) bodyOcc.add(`${p.body[i].x},${p.body[i].y}`);
-    }
-  }
-  for (const h of newHeads) {
-    if (h.skip || !h.p.alive) continue;
-    if (bodyOcc.has(`${h.x},${h.y}`)) { applyCollision(h.p); h.skip = true; }
-  }
-
-  // 4. Head-on-head collision
-  const headMap = new Map();
-  for (const h of newHeads) {
-    if (h.skip || !h.p.alive) continue;
-    const k = `${h.x},${h.y}`;
-    if (headMap.has(k)) {
-      applyCollision(h.p); h.skip = true;
-      applyCollision(headMap.get(k).p); headMap.get(k).skip = true;
-    } else headMap.set(k, h);
-  }
-
-  // 5. Move snakes that weren't blocked
   let autoPooped = false;
-  for (const h of newHeads) {
-    if (h.skip || !h.p.alive) continue;
-    const p = h.p;
-    const k = `${h.x},${h.y}`;
-    p.body.unshift({ x: h.x, y: h.y });
-    if (foodKeys.has(k)) {
-      p.score++;
-      sess.food = sess.food.filter(f => `${f.x},${f.y}` !== k);
-      // Auto-poop every 5 food: snake doesn't grow, tail becomes poop
-      if (p.score % 5 === 0 && p.body.length >= 2) {
-        const tail = p.body.pop();
-        const poopSet = new Set(sess.poops.map(pp => `${pp.x},${pp.y}`));
-        if (!poopSet.has(`${tail.x},${tail.y}`)) {
-          sess.poops.push({ x: tail.x, y: tail.y });
-          autoPooped = true;
-        }
-      }
-    } else {
-      p.body.pop();
+
+  if (doMove) {
+    // 1. Apply direction and compute new heads (frozen snakes don't move)
+    const newHeads = [];
+    for (const p of sess.players) {
+      if (!p.alive || p.frozen > 0) continue;
+      p.dir = p.nextDir;
+      const [dx, dy] = DIRS[p.dir];
+      newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p, skip: false });
     }
-  }
 
-  // 6. Decrement dizzy / frozen counters
-  for (const p of sess.players) {
-    if (p.frozen > 0) p.frozen--;
-    if (p.dizzy  > 0) p.dizzy--;
-  }
+    // 2. Wall + poop + cleaner + elephant collisions → shrink, don't move
+    const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
+    for (const h of newHeads) {
+      const hitElephant = sess.elephant &&
+        h.x >= sess.elephant.lx && h.x < sess.elephant.lx + sess.elephant.size &&
+        h.y >= sess.elephant.ly && h.y < sess.elephant.ly + sess.elephant.size;
+      if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS ||
+          poopKeys.has(`${h.x},${h.y}`) ||
+          (sess.cleaner && !sess.cleaner.leaving && h.x === sess.cleaner.x && h.y === sess.cleaner.y) ||
+          hitElephant) {
+        applyCollision(h.p);
+        h.skip = true;
+      }
+    }
 
-  if (autoPooped) { scheduleCleaner(sess); }
+    // 3. Body collision — build occupied set accounting for which snakes aren't moving
+    const foodKeys = new Set(sess.food.map(f => `${f.x},${f.y}`));
+    const bodyOcc = new Set();
+    for (const p of sess.players) {
+      if (!p.alive) continue;
+      const h = newHeads.find(hh => hh.p === p);
+      if (!h || h.skip) {
+        for (const seg of p.body) bodyOcc.add(`${seg.x},${seg.y}`);
+      } else {
+        const willEat = foodKeys.has(`${h.x},${h.y}`);
+        const end = willEat ? p.body.length : p.body.length - 1;
+        for (let i = 0; i < end; i++) bodyOcc.add(`${p.body[i].x},${p.body[i].y}`);
+      }
+    }
+    for (const h of newHeads) {
+      if (h.skip || !h.p.alive) continue;
+      if (bodyOcc.has(`${h.x},${h.y}`)) { applyCollision(h.p); h.skip = true; }
+    }
 
-  spawnFood(sess);
+    // 4. Head-on-head collision
+    const headMap = new Map();
+    for (const h of newHeads) {
+      if (h.skip || !h.p.alive) continue;
+      const k = `${h.x},${h.y}`;
+      if (headMap.has(k)) {
+        applyCollision(h.p); h.skip = true;
+        applyCollision(headMap.get(k).p); headMap.get(k).skip = true;
+      } else headMap.set(k, h);
+    }
 
-  // Move cleaner + elephant every 2 ticks
-  sess.cleanerTickCount++;
-  if (sess.cleanerTickCount % 2 === 0) {
-    if (sess.cleaner) moveCleaner(sess);
-    if (sess.elephant) moveElephant(sess);
+    // 5. Move snakes that weren't blocked
+    for (const h of newHeads) {
+      if (h.skip || !h.p.alive) continue;
+      const p = h.p;
+      const k = `${h.x},${h.y}`;
+      p.body.unshift({ x: h.x, y: h.y });
+      if (foodKeys.has(k)) {
+        p.score++;
+        sess.food = sess.food.filter(f => `${f.x},${f.y}` !== k);
+        if (p.score % 5 === 0 && p.body.length >= 2) {
+          const tail = p.body.pop();
+          const poopSet = new Set(sess.poops.map(pp => `${pp.x},${pp.y}`));
+          if (!poopSet.has(`${tail.x},${tail.y}`)) {
+            sess.poops.push({ x: tail.x, y: tail.y });
+            autoPooped = true;
+          }
+        }
+      } else {
+        p.body.pop();
+      }
+    }
+
+    // 6. Decrement dizzy / frozen counters (counts in move-ticks, same real durations)
+    for (const p of sess.players) {
+      if (p.frozen > 0) p.frozen--;
+      if (p.dizzy  > 0) p.dizzy--;
+    }
+
+    if (autoPooped) scheduleCleaner(sess);
+    spawnFood(sess);
+
+    // Move cleaner + elephant every 2 move-ticks (= 600ms)
+    sess.cleanerTickCount++;
+    if (sess.cleanerTickCount % 2 === 0) {
+      if (sess.cleaner) moveCleaner(sess);
+      if (sess.elephant) moveElephant(sess);
+    }
   }
 
   const alive = sess.players.filter(p => p.alive);
   const total = sess.players.length;
-  const ended = total <= 1 ? alive.length === 0 : alive.length <= 1;
+  const ended = doMove && (total <= 1 ? alive.length === 0 : alive.length <= 1);
 
   bcast(sess, {
     type: 'snake_tick',
+    moved: doMove,
     snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy, frozen: p.frozen })),
     food: sess.food,
     poops: sess.poops,

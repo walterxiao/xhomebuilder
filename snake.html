@@ -316,6 +316,7 @@ function initCanvas(cols, rows) {
 
 function renderGame() {
   if (!gameState) return;
+  const now = Date.now();
   const { cols, rows, snakes, food, players } = gameState;
   ctx.fillStyle = '#060e06';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -405,7 +406,6 @@ function renderGame() {
   }
 
   // Snakes — interpolated + bounce offset on collision
-  const now = Date.now();
   const alpha = Math.min(1, (now - lastTickTime) / TICK_MS);
   const prev = prevSnakes || snakes;
   for (let i = 0; i < snakes.length; i++) {

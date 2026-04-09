@@ -6,7 +6,7 @@ const wss = new WebSocketServer({ noServer: true });
 const COLS = 25, ROWS = 20;
 const TICK_MS = 200;
 const MAX_PLAYERS = 4;
-const FOOD_PER_PLAYER = 2;
+const FOOD_PER_PLAYER = 1;
 const INIT_LEN = 4;
 const WIN_BONUS = 5;
 
@@ -85,6 +85,7 @@ function startGame(sess) {
     p.alive = true;
     p.score = 0;
     p.dizzy = 0;
+    p.frozen = 0;
     p.body = [];
     for (let k = 0; k < INIT_LEN; k++) p.body.push({ x: sp.x + ddx*k, y: sp.y + ddy*k });
   });
@@ -94,7 +95,7 @@ function startGame(sess) {
     type: 'snake_start',
     cols: COLS, rows: ROWS,
     players: sess.players.map((p, i) => ({ name: p.name, color: p.color, idx: i })),
-    snakes: sess.players.map(p => ({ body: p.body, alive: true, dizzy: 0 })),
+    snakes: sess.players.map(p => ({ body: p.body, alive: true, dizzy: 0, frozen: 0 })),
     food: sess.food,
     poops: [],
     cleaner: null,
@@ -106,19 +107,20 @@ function startGame(sess) {
 
 // ── Collision: shrink snake by 5; kill if length reaches 0 ───────────────────
 function applyCollision(p) {
-  if (p.dizzy > 0) return; // immune while dizzy
+  if (p.dizzy > 0) return; // immune while dizzy/frozen
   const remove = Math.min(5, p.body.length);
   p.body.splice(p.body.length - remove, remove);
-  p.dizzy = 5; // ~1s immunity at 200ms/tick
+  p.dizzy  = 20; // immune for 4s (covers freeze + brief post-thaw)
+  p.frozen = 15; // freeze for 3s (15 × 200ms)
   if (p.body.length === 0) p.alive = false;
 }
 
 // ── Game tick ─────────────────────────────────────────────────────────────────
 function tick(sess) {
-  // 1. Apply direction and compute new heads
+  // 1. Apply direction and compute new heads (frozen snakes don't move)
   const newHeads = [];
   for (const p of sess.players) {
-    if (!p.alive) continue;
+    if (!p.alive || p.frozen > 0) continue;
     p.dir = p.nextDir;
     const [dx, dy] = DIRS[p.dir];
     newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p, skip: false });
@@ -189,8 +191,11 @@ function tick(sess) {
     }
   }
 
-  // 6. Decrement dizzy counters
-  for (const p of sess.players) { if (p.dizzy > 0) p.dizzy--; }
+  // 6. Decrement dizzy / frozen counters
+  for (const p of sess.players) {
+    if (p.frozen > 0) p.frozen--;
+    if (p.dizzy  > 0) p.dizzy--;
+  }
 
   if (autoPooped) { mergePoop(sess); scheduleCleaner(sess); }
 
@@ -206,7 +211,7 @@ function tick(sess) {
 
   bcast(sess, {
     type: 'snake_tick',
-    snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy })),
+    snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy, frozen: p.frozen })),
     food: sess.food,
     poops: sess.poops,
     cleaner: sess.cleaner,
@@ -400,7 +405,7 @@ wss.on('connection', ws => {
       const name = String(m.name || '').trim().slice(0, 24);
       if (!name) return;
       sess = mkSess();
-      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0 };
+      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0, frozen: 0 };
       sess.players.push(me);
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
@@ -413,7 +418,7 @@ wss.on('connection', ws => {
       if (target.started) return send(ws, { type: 'snake_err', message: 'Game already started.' });
       if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
-      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0 };
+      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0, frozen: 0 };
       sess.players.push(me);
       bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
@@ -434,7 +439,10 @@ wss.on('connection', ws => {
 
     } else if (m.type === 'direction') {
       if (!me || !me.alive || !DIRS[m.dir]) return;
-      if (OPPOSITE[m.dir] !== me.dir) me.nextDir = m.dir;
+      if (OPPOSITE[m.dir] !== me.dir) {
+        me.nextDir = m.dir;
+        if (me.frozen > 0) me.frozen = 0; // early thaw on direction input
+      }
 
     } else if (m.type === 'snake_restart') {
       if (!sess || !me || sess.players[0] !== me || !sess.gameOver) return;

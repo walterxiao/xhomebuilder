@@ -448,6 +448,38 @@ function renderGame() {
       ctx.fillText('★', hx + Math.cos(a) * r, hy + Math.sin(a) * r);
     }
   }
+
+  // Countdown overlay — only shown to the local frozen player
+  if (!isObs && myIdx >= 0 && snakes[myIdx] && snakes[myIdx].frozen > 0) {
+    const frozen = snakes[myIdx].frozen;
+    const secsLeft = Math.ceil(frozen * TICK_MS / 1000);
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+
+    // Dim the whole canvas
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Pulsing scale: number grows in slightly at the start of each second
+    const pulse = 1 + Math.sin(now / 180) * 0.06;
+    ctx.save();
+    ctx.translate(cx, cy - CELL * 1.5);
+    ctx.scale(pulse, pulse);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.floor(CELL * 3.2)}px sans-serif`;
+    ctx.fillStyle = '#ffee44';
+    ctx.shadowColor = '#ff9900';
+    ctx.shadowBlur = 28;
+    ctx.fillText(secsLeft, 0, 0);
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${Math.max(10, Math.floor(CELL * 0.75))}px sans-serif`;
+    ctx.fillStyle = '#aaccaa';
+    ctx.fillText('tap a direction to continue', cx, cy + CELL * 1.2);
+  }
 }
 
 // ── Animation loop ────────────────────────────────────────────────────────────

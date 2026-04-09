@@ -105,28 +105,13 @@
       min-height: 1em;
     }
 
-    /* ── Online count (top) ── */
-    #online-count {
-      font-size: 0.78rem;
-      letter-spacing: 2px;
-      color: #444466;
-      text-transform: uppercase;
-      margin-top: -30px;
-      margin-bottom: 36px;
-    }
-
-    #online-count span {
-      color: #7070aa;
-      font-weight: bold;
-    }
-
     /* ── Name editor ── */
     #name-editor {
-      margin-top: 28px;
       display: flex;
       align-items: center;
       gap: 8px;
       justify-content: center;
+      margin-bottom: 8px;
     }
 
     #name-editor label {
@@ -155,6 +140,20 @@
       color: #3a7a3a;
       opacity: 0;
       transition: opacity 0.3s;
+    }
+
+    /* ── Online count ── */
+    #online-count {
+      font-size: 0.78rem;
+      letter-spacing: 2px;
+      color: #444466;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    #online-count span {
+      color: #7070aa;
+      font-weight: bold;
     }
 
     /* ── Name overlay ── */
@@ -214,8 +213,14 @@
 </div>
 
   <h1>Game Hub</h1>
-  <p class="subtitle">Choose a game</p>
+  <div id="name-editor">
+    <label for="name-editor-input">Your name</label>
+    <input id="name-editor-input" type="text" maxlength="24" autocomplete="off" placeholder="—">
+    <span id="name-saved-hint">saved</span>
+  </div>
   <div id="online-count"><span>0</span> online</div>
+  <p class="subtitle">Choose a game</p>
+
 
   <div class="games-grid" id="games-grid">
     <a href="/connect5" class="game-card" data-game="connect5">
@@ -305,12 +310,6 @@
       <div class="game-players" id="players-blockstack"></div>
       <div class="play-count" id="plays-blockstack"></div>
     </a>
-  </div>
-
-  <div id="name-editor">
-    <label for="name-editor-input">Your name</label>
-    <input id="name-editor-input" type="text" maxlength="24" autocomplete="off" placeholder="—">
-    <span id="name-saved-hint">saved</span>
   </div>
 
 

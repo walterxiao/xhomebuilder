@@ -84,6 +84,7 @@ function startGame(sess) {
     p.nextDir = sp.dir;
     p.alive = true;
     p.score = 0;
+    p.dizzy = 0;
     p.body = [];
     for (let k = 0; k < INIT_LEN; k++) p.body.push({ x: sp.x + ddx*k, y: sp.y + ddy*k });
   });
@@ -93,15 +94,23 @@ function startGame(sess) {
     type: 'snake_start',
     cols: COLS, rows: ROWS,
     players: sess.players.map((p, i) => ({ name: p.name, color: p.color, idx: i })),
-    snakes: sess.players.map(p => ({ body: p.body, alive: true })),
+    snakes: sess.players.map(p => ({ body: p.body, alive: true, dizzy: 0 })),
     food: sess.food,
     poops: [],
     cleaner: null,
-    scores: sess.players.map(() => 0),
   });
 
   if (sess.interval) clearInterval(sess.interval);
   sess.interval = setInterval(() => tick(sess), TICK_MS);
+}
+
+// ── Collision: shrink snake by 5; kill if length reaches 0 ───────────────────
+function applyCollision(p) {
+  if (p.dizzy > 0) return; // immune while dizzy
+  const remove = Math.min(5, p.body.length);
+  p.body.splice(p.body.length - remove, remove);
+  p.dizzy = 5; // ~1s immunity at 200ms/tick
+  if (p.body.length === 0) p.alive = false;
 }
 
 // ── Game tick ─────────────────────────────────────────────────────────────────
@@ -112,51 +121,61 @@ function tick(sess) {
     if (!p.alive) continue;
     p.dir = p.nextDir;
     const [dx, dy] = DIRS[p.dir];
-    newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p });
+    newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p, skip: false });
   }
 
-  // 2. Wall + poop + cleaner collisions
+  // 2. Wall + poop + cleaner collisions → shrink, don't move
   const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
   for (const h of newHeads) {
-    if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS) h.p.alive = false;
-    else if (poopKeys.has(`${h.x},${h.y}`)) h.p.alive = false;
-    else if (sess.cleaner && h.x === sess.cleaner.x && h.y === sess.cleaner.y) h.p.alive = false;
+    if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS ||
+        poopKeys.has(`${h.x},${h.y}`) ||
+        (sess.cleaner && !sess.cleaner.leaving && h.x === sess.cleaner.x && h.y === sess.cleaner.y)) {
+      applyCollision(h.p);
+      h.skip = true;
+    }
   }
 
-  // 3. Body collision (against current bodies excluding tail — tail will move away unless food eaten)
+  // 3. Body collision — build occupied set accounting for which snakes aren't moving
   const foodKeys = new Set(sess.food.map(f => `${f.x},${f.y}`));
   const bodyOcc = new Set();
   for (const p of sess.players) {
     if (!p.alive) continue;
-    const ate = foodKeys.has(`${p.body[0].x + DIRS[p.dir][0]},${p.body[0].y + DIRS[p.dir][1]}`);
-    const end = ate ? p.body.length : p.body.length - 1;
-    for (let i = 0; i < end; i++) bodyOcc.add(`${p.body[i].x},${p.body[i].y}`);
+    const h = newHeads.find(hh => hh.p === p);
+    if (!h || h.skip) {
+      for (const seg of p.body) bodyOcc.add(`${seg.x},${seg.y}`);
+    } else {
+      const willEat = foodKeys.has(`${h.x},${h.y}`);
+      const end = willEat ? p.body.length : p.body.length - 1;
+      for (let i = 0; i < end; i++) bodyOcc.add(`${p.body[i].x},${p.body[i].y}`);
+    }
   }
   for (const h of newHeads) {
-    if (!h.p.alive) continue;
-    if (bodyOcc.has(`${h.x},${h.y}`)) h.p.alive = false;
+    if (h.skip || !h.p.alive) continue;
+    if (bodyOcc.has(`${h.x},${h.y}`)) { applyCollision(h.p); h.skip = true; }
   }
 
   // 4. Head-on-head collision
   const headMap = new Map();
   for (const h of newHeads) {
-    if (!h.p.alive) continue;
+    if (h.skip || !h.p.alive) continue;
     const k = `${h.x},${h.y}`;
-    if (headMap.has(k)) { h.p.alive = false; headMap.get(k).p.alive = false; }
-    else headMap.set(k, h);
+    if (headMap.has(k)) {
+      applyCollision(h.p); h.skip = true;
+      applyCollision(headMap.get(k).p); headMap.get(k).skip = true;
+    } else headMap.set(k, h);
   }
 
-  // 5. Move snakes
+  // 5. Move snakes that weren't blocked
   let autoPooped = false;
   for (const h of newHeads) {
+    if (h.skip || !h.p.alive) continue;
     const p = h.p;
-    if (!p.alive) continue;
     const k = `${h.x},${h.y}`;
     p.body.unshift({ x: h.x, y: h.y });
     if (foodKeys.has(k)) {
       p.score++;
       sess.food = sess.food.filter(f => `${f.x},${f.y}` !== k);
-      // Auto-poop every 10 food: snake doesn't grow, tail becomes poop
+      // Auto-poop every 5 food: snake doesn't grow, tail becomes poop
       if (p.score % 5 === 0 && p.body.length >= 2) {
         const tail = p.body.pop();
         const poopSet = new Set(sess.poops.map(pp => `${pp.x},${pp.y}`));
@@ -170,10 +189,10 @@ function tick(sess) {
     }
   }
 
-  if (autoPooped) {
-    mergePoop(sess);
-    scheduleCleaner(sess);
-  }
+  // 6. Decrement dizzy counters
+  for (const p of sess.players) { if (p.dizzy > 0) p.dizzy--; }
+
+  if (autoPooped) { mergePoop(sess); scheduleCleaner(sess); }
 
   spawnFood(sess);
 
@@ -187,11 +206,10 @@ function tick(sess) {
 
   bcast(sess, {
     type: 'snake_tick',
-    snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
+    snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy })),
     food: sess.food,
     poops: sess.poops,
     cleaner: sess.cleaner,
-    scores: sess.players.map(p => p.score),
     aliveCount: alive.length,
   });
 
@@ -211,7 +229,7 @@ function tick(sess) {
     bcast(sess, {
       type: 'snake_over',
       winner,
-      scores: sess.players.map(p => ({ name: p.name, color: p.color, score: p.score })),
+      scores: sess.players.map(p => ({ name: p.name, color: p.color, score: p.score, length: p.body.length })),
     });
   }
 }
@@ -382,7 +400,7 @@ wss.on('connection', ws => {
       const name = String(m.name || '').trim().slice(0, 24);
       if (!name) return;
       sess = mkSess();
-      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
+      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0 };
       sess.players.push(me);
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
@@ -395,7 +413,7 @@ wss.on('connection', ws => {
       if (target.started) return send(ws, { type: 'snake_err', message: 'Game already started.' });
       if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
-      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
+      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0 };
       sess.players.push(me);
       bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });

@@ -203,7 +203,7 @@ function handle(msg) {
       break;
 
     case 'snake_start':
-      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, scores: msg.scores };
+      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null };
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
@@ -221,7 +221,6 @@ function handle(msg) {
       gameState.food = msg.food;
       gameState.poops = msg.poops || gameState.poops;
       gameState.cleaner = msg.cleaner !== undefined ? msg.cleaner : gameState.cleaner;
-      gameState.scores = msg.scores;
       lastTickTime = Date.now();
       renderScoreBar();
       break;
@@ -343,6 +342,12 @@ function renderGame() {
     if (!sn.body.length) continue;
     const color = players[i] ? players[i].color : '#888';
     const alive = sn.alive;
+    const dizzy = sn.dizzy > 0;
+
+    // Dizzy snakes flash rapidly
+    if (dizzy) {
+      ctx.globalAlpha = Math.sin(Date.now() / 60) > 0 ? 1.0 : 0.3;
+    }
 
     ctx.fillStyle = alive ? color : color + '44';
     ctx.shadowColor = alive ? color : 'transparent';
@@ -357,6 +362,7 @@ function renderGame() {
       ctx.fillRect(rx * CELL + pad, ry * CELL + pad, CELL - pad*2, CELL - pad*2);
     }
     ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
 
     // Draw head with eyes
     if (alive && sn.body.length > 0) {
@@ -384,13 +390,15 @@ function renderLoop() {
 // ── Score bar ─────────────────────────────────────────────────────────────────
 function renderScoreBar() {
   if (!gameState) return;
-  const { players, scores, snakes } = gameState;
+  const { players, snakes } = gameState;
   document.getElementById('score-bar').innerHTML = players.map((p, i) => {
-    const alive = snakes[i] ? snakes[i].alive : false;
+    const sn = snakes[i];
+    const alive = sn ? sn.alive : false;
+    const len = sn ? sn.body.length : 0;
     return `<div class="score-chip${alive ? '' : ' dead'}">
       <span class="sc-dot" style="background:${p.color}"></span>
       <span class="sc-name">${esc(p.name)}</span>
-      <span class="sc-val">${scores[i] || 0}</span>
+      <span class="sc-val">${len}</span>
     </div>`;
   }).join('');
 }
@@ -404,7 +412,7 @@ function showGameOver(msg) {
     <div class="over-row${i === 0 ? ' first' : ''}">
       <span class="over-swatch" style="background:${s.color}"></span>
       <span class="over-name">${esc(s.name)}</span>
-      <span class="over-score">${s.score}</span>
+      <span class="over-score">${s.score} food</span>
     </div>`).join('');
   document.getElementById('restart-btn').style.display = isHost ? 'block' : 'none';
   showScreen('over');

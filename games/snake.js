@@ -115,7 +115,7 @@ function startGame(sess) {
 // ── Collision: shrink snake by 5; kill if length reaches 0 ───────────────────
 function applyCollision(p) {
   if (p.dizzy > 0) return; // immune while dizzy/frozen
-  const remove = Math.min(5, p.body.length);
+  const remove = Math.min(3, p.body.length);
   p.body.splice(p.body.length - remove, remove);
   p.dizzy  = 20; // immune for 4s (covers freeze + brief post-thaw)
   p.frozen = 15; // freeze for 3s (15 × 200ms)

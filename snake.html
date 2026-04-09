@@ -686,12 +686,25 @@ function showGameOver(msg) {
 
 // ── Input ─────────────────────────────────────────────────────────────────────
 const OPP = { up:'down', down:'up', left:'right', right:'left' };
+const DMAP = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+
 function sendDir(dir) {
   if (isObs) return;
-  if (gameState && myIdx >= 0 && gameState.snakes[myIdx] && !gameState.snakes[myIdx].alive) return;
+  if (!gameState || myIdx < 0) return;
+  const sn = gameState.snakes[myIdx];
+  if (!sn || !sn.alive) return;
   if (OPP[dir] === myDir) return;
   myDir = dir;
   wsSend({ type: 'direction', dir });
+
+  // Client-side prediction: immediately render the snake moving in new direction
+  // so there's no visible wait for the next server tick (up to 300ms).
+  if (sn.frozen > 0) { gameState.snakes[myIdx] = { ...sn, frozen: 0 }; return; }
+  const [dx, dy] = DMAP[dir];
+  const newHead = { x: sn.body[0].x + dx, y: sn.body[0].y + dy };
+  prevSnakes = gameState.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
+  gameState.snakes[myIdx] = { ...sn, body: [newHead, ...sn.body.slice(0, -1)] };
+  lastTickTime = Date.now();
 }
 
 document.addEventListener('keydown', e => {

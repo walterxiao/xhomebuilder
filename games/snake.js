@@ -81,7 +81,7 @@ function startGame(sess) {
   sess.elephantTimer = setInterval(() => spawnElephant(sess), 30000);
   sess.elephant = null;
   sess.elephantCount = 0;
-  sess.elephantPoopQueue = [];
+  sess.elephantPoopCols = null;
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -367,41 +367,37 @@ function spawnElephant(sess) {
   const ly = Math.floor(Math.random() * (ROWS - size + 1));
   sess.elephant = { lx: -size, ly, size };
 
-  // Pre-generate poop positions spread evenly across the whole grid
+  // Pre-pick which columns (0..COLS-1) will receive a poop as monster passes
   const target = 10 + Math.floor(Math.random() * 11); // 10–20
-  const occ = new Set();
-  const queue = [];
-  let attempts = 0;
-  while (queue.length < target && attempts++ < 3000) {
-    const x = Math.floor(Math.random() * COLS);
-    const y = Math.floor(Math.random() * ROWS);
-    const k = `${x},${y}`;
-    if (!occ.has(k)) { occ.add(k); queue.push({ x, y }); }
+  const allCols = Array.from({ length: COLS }, (_, i) => i);
+  for (let i = allCols.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allCols[i], allCols[j]] = [allCols[j], allCols[i]];
   }
-  sess.elephantPoopQueue = queue;
+  sess.elephantPoopCols = new Set(allCols.slice(0, target));
 }
 
 function moveElephant(sess) {
   if (!sess.elephant) return;
   const { lx, ly, size } = sess.elephant;
 
-  // Drop one pre-queued poop per step (positions spread across the whole grid)
-  if (lx >= 0 && lx < COLS && sess.elephantPoopQueue.length > 0) {
-    const poop = sess.elephantPoopQueue.shift();
+  // Drop a poop in the column just vacated, if that column was pre-selected
+  if (lx >= 0 && lx < COLS && sess.elephantPoopCols && sess.elephantPoopCols.has(lx)) {
     const poopSet  = new Set(sess.poops.map(p => `${p.x},${p.y}`));
     const foodSet  = new Set(sess.food.map(f => `${f.x},${f.y}`));
     const snakeOcc = new Set();
     for (const p of sess.players) if (p.alive) for (const s of p.body) snakeOcc.add(`${s.x},${s.y}`);
-    const pk = `${poop.x},${poop.y}`;
+    const row = ly + Math.floor(Math.random() * size);
+    const pk  = `${lx},${row}`;
     if (!poopSet.has(pk) && !foodSet.has(pk) && !snakeOcc.has(pk)) {
-      sess.poops.push(poop);
+      sess.poops.push({ x: lx, y: row });
       scheduleCleaner(sess);
     }
   }
 
   // Move right; also wander up/down
   const newLX = lx + 1;
-  if (newLX >= COLS) { sess.elephant = null; sess.elephantPoopQueue = []; return; }
+  if (newLX >= COLS) { sess.elephant = null; sess.elephantPoopCols = null; return; }
 
   const dy = Math.random() < 0.25 ? -1 : Math.random() < 0.33 ? 1 : 0;
   const newLY = Math.max(0, Math.min(ROWS - size, ly + dy));

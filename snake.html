@@ -417,17 +417,41 @@ function renderGame() {
     ctx.fillRect(x * CELL + CELL/2 - 1, y * CELL + CELL/2 - 1, 2, 2);
   }
 
-  // Poops — dark brown squares with a slightly rounded look
+  // Poops — pixel-art pile (💩 style: layered tiers + eyes)
   ctx.shadowBlur = 0;
   for (const p of (gameState.poops || [])) {
-    const pad = Math.max(1, Math.floor(CELL * 0.15));
-    const sz = CELL - pad * 2;
-    ctx.fillStyle = '#5a3010';
-    ctx.fillRect(p.x * CELL + pad, p.y * CELL + pad, sz, sz);
-    // Lighter center highlight
-    ctx.fillStyle = '#7a4820';
-    const inner = Math.max(1, Math.floor(sz * 0.35));
-    ctx.fillRect(p.x * CELL + pad + Math.floor(sz*0.2), p.y * CELL + pad + Math.floor(sz*0.2), inner, inner);
+    const ox = p.x * CELL, oy = p.y * CELL;
+    const u = Math.max(1, Math.floor(CELL / 10));
+    // Shadow at base
+    ctx.fillStyle = '#110500';
+    ctx.fillRect(ox + Math.floor(CELL*0.12), oy + Math.floor(CELL*0.84), Math.floor(CELL*0.76), Math.floor(CELL*0.12));
+    // Base tier (widest)
+    ctx.fillStyle = '#3b1800';
+    ctx.fillRect(ox + Math.floor(CELL*0.10), oy + Math.floor(CELL*0.60), Math.floor(CELL*0.80), Math.floor(CELL*0.28));
+    // Mid tier
+    ctx.fillStyle = '#5c2800';
+    ctx.fillRect(ox + Math.floor(CELL*0.20), oy + Math.floor(CELL*0.38), Math.floor(CELL*0.60), Math.floor(CELL*0.28));
+    // Upper tier
+    ctx.fillStyle = '#7a3800';
+    ctx.fillRect(ox + Math.floor(CELL*0.30), oy + Math.floor(CELL*0.20), Math.floor(CELL*0.40), Math.floor(CELL*0.24));
+    // Swirl tip
+    ctx.fillStyle = '#8f4500';
+    ctx.fillRect(ox + Math.floor(CELL*0.38), oy + Math.floor(CELL*0.08), Math.floor(CELL*0.24), Math.floor(CELL*0.16));
+    // Highlight on mid tier
+    ctx.fillStyle = '#a05800';
+    ctx.fillRect(ox + Math.floor(CELL*0.22), oy + Math.floor(CELL*0.41), Math.floor(CELL*0.20), u);
+    // Eyes + pupils (only if cell is large enough)
+    if (CELL >= 10) {
+      const ew = Math.max(1, Math.floor(CELL * 0.11));
+      const ey = oy + Math.floor(CELL * 0.44);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(ox + Math.floor(CELL*0.26), ey, ew, ew);
+      ctx.fillRect(ox + Math.floor(CELL*0.56), ey, ew, ew);
+      ctx.fillStyle = '#111';
+      const pw = Math.max(1, Math.floor(ew * 0.55));
+      ctx.fillRect(ox + Math.floor(CELL*0.28), ey + u, pw, pw);
+      ctx.fillRect(ox + Math.floor(CELL*0.58), ey + u, pw, pw);
+    }
   }
 
   // Food

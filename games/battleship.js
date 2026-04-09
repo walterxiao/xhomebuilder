@@ -9,7 +9,6 @@ const FLEET = [
   { id: 'destroyer',  size: 2 },
 ];
 
-let queue = null;
 let nextSessionId = 1;
 const sessions = new Map();
 
@@ -23,7 +22,8 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'bs_join')     handleJoin(ws, msg.name);
+    if (msg.type === 'bs_create')   handleCreate(ws, msg.name);
+    if (msg.type === 'bs_join')     handleJoin(ws, msg.name, msg.sessionId);
     if (msg.type === 'bs_place')    handlePlace(ws, msg.ships);
     if (msg.type === 'bs_fire')     handleFire(ws, msg.row, msg.col);
     if (msg.type === 'bs_rematch')  handleRematch(ws);
@@ -56,7 +56,7 @@ function sendAll(session, obj) {
 
 // ── Join / Matchmaking ────────────────────────────────────────────────────────
 
-function handleJoin(ws, name) {
+function handleCreate(ws, name) {
   if (ws.sessionId !== null) return;
   if (!name || typeof name !== 'string') return send(ws, { type: 'bs_error', message: 'Invalid name.' });
   const cleanName = name.trim().slice(0, 24);
@@ -64,25 +64,44 @@ function handleJoin(ws, name) {
 
   ws.playerName = cleanName;
 
-  if (queue && queue.ws.readyState === 1) {
-    const first = queue;
-    queue = null;
+  const sessionId = nextSessionId++;
+  const session = {
+    players: [
+      { ws, name: cleanName, ships: null, grid: makeGrid(), fired: new Set() },
+    ],
+    observers: [],
+    phase: 'placement',
+    currentTurn: 0,
+    rematchVotes: new Set(),
+  };
+  sessions.set(sessionId, session);
 
-    const sessionId = nextSessionId++;
-    const session = createSession(first.ws, first.name, ws, cleanName);
-    sessions.set(sessionId, session);
+  ws.sessionId = sessionId;
+  ws.playerIndex = 0;
 
-    first.ws.sessionId = sessionId;
-    first.ws.playerIndex = 0;
-    ws.sessionId = sessionId;
-    ws.playerIndex = 1;
+  send(ws, { type: 'bs_waiting', sessionId });
+}
 
-    send(first.ws, { type: 'bs_start', myIndex: 0, opponentName: cleanName });
-    send(ws,       { type: 'bs_start', myIndex: 1, opponentName: first.name });
-  } else {
-    queue = { ws, name: cleanName };
-    send(ws, { type: 'bs_waiting' });
-  }
+function handleJoin(ws, name, sessionId) {
+  if (ws.sessionId !== null) return;
+  if (!name || typeof name !== 'string') return send(ws, { type: 'bs_error', message: 'Invalid name.' });
+  const cleanName = name.trim().slice(0, 24);
+  if (!cleanName) return send(ws, { type: 'bs_error', message: 'Please enter a name.' });
+
+  const session = sessions.get(sessionId);
+  if (!session) return send(ws, { type: 'bs_error', message: 'Session not found.' });
+  if (session.players.length !== 1) return send(ws, { type: 'bs_error', message: 'Session is not available.' });
+
+  ws.playerName = cleanName;
+
+  const host = session.players[0];
+  session.players.push({ ws, name: cleanName, ships: null, grid: makeGrid(), fired: new Set() });
+
+  ws.sessionId = sessionId;
+  ws.playerIndex = 1;
+
+  send(host.ws, { type: 'bs_start', myIndex: 0, opponentName: cleanName });
+  send(ws,      { type: 'bs_start', myIndex: 1, opponentName: host.name });
 }
 
 function createSession(ws0, name0, ws1, name1) {
@@ -391,10 +410,6 @@ function handleChat(ws, text) {
 // ── Disconnect ────────────────────────────────────────────────────────────────
 
 function handleDisconnect(ws) {
-  if (queue && queue.ws === ws) {
-    queue = null;
-    return;
-  }
   if (ws.sessionId === null) return;
   const session = sessions.get(ws.sessionId);
   if (!session) return;
@@ -418,4 +433,25 @@ function handleDisconnect(ws) {
   ws.sessionId = null;
 }
 
-module.exports = { wss };
+function getSessionList() {
+  const list = [];
+  for (const [id, s] of sessions) {
+    if (s.phase === 'over') continue;
+    const host = s.players[0];
+    const playerCount = s.players.length;
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: playerCount,
+      maxPlayers: 2,
+      observers: s.observers.length,
+      canJoin: playerCount === 1,
+      canObserve: playerCount === 2,
+      status: playerCount === 1 ? 'waiting' : 'playing',
+      label: playerCount === 1 ? 'Waiting for opponent' : `${s.phase}`,
+    });
+  }
+  return list;
+}
+
+module.exports = { wss, getSessionList };

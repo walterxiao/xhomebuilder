@@ -11,11 +11,14 @@ const chess = require('./games/chess');
 const pingpong = require('./games/pingpong');
 const blockstack = require('./games/blockstack');
 const raiden = require('./games/raiden');
+const gofish = require('./games/gofish');
+const snake = require('./games/snake');
 
 const PORT = process.env.PORT || 9753;
 
 const PAGES = {
   '/':           'index.html',
+  '/snake':      'snake.html',
   '/connect5':   'connect5.html',
   '/airplane':   'airplane.html',
   '/battleship': 'battleship.html',
@@ -24,22 +27,28 @@ const PAGES = {
   '/pingpong':   'pingpong.html',
   '/blockstack': 'blockstack.html',
   '/raiden':     'raiden.html',
+  '/gofish':     'gofish.html',
 };
 
 
 
 const httpServer = http.createServer((req, res) => {
   const urlPath = req.url.split('?')[0];
-  if (urlPath === '/api/raiden/sessions') {
-    const data = JSON.stringify(raiden.getSessionList());
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(data);
-    return;
-  }
-  if (urlPath === '/api/blockstack/sessions') {
-    const data = JSON.stringify(blockstack.getSessionList());
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(data);
+  const SESSION_APIS = {
+    '/api/connect5/sessions':   () => connect5.getSessionList(),
+    '/api/chess/sessions':      () => chess.getSessionList(),
+    '/api/battleship/sessions': () => battleship.getSessionList(),
+    '/api/airplane/sessions':   () => airplane.getSessionList(),
+    '/api/pictionary/sessions': () => pictionary.getSessionList(),
+    '/api/pingpong/sessions':   () => pingpong.getSessionList(),
+    '/api/blockstack/sessions': () => blockstack.getSessionList(),
+    '/api/raiden/sessions':     () => raiden.getSessionList(),
+    '/api/gofish/sessions':     () => gofish.getSessionList(),
+    '/api/snake/sessions':      () => snake.getSessionList(),
+  };
+  if (SESSION_APIS[urlPath]) {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(SESSION_APIS[urlPath]()));
     return;
   }
   const file = PAGES[urlPath];
@@ -87,6 +96,14 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/raiden') {
     raiden.wss.handleUpgrade(req, socket, head, ws => {
       raiden.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/gofish') {
+    gofish.wss.handleUpgrade(req, socket, head, ws => {
+      gofish.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/snake') {
+    snake.wss.handleUpgrade(req, socket, head, ws => {
+      snake.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

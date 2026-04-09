@@ -375,4 +375,24 @@ wss.on('connection', ws => {
   });
 });
 
-module.exports = { wss };
+function getSessionList() {
+  const list = [];
+  for (const [id, sess] of sessions) {
+    const cur = sess.players.length;
+    const host = sess.players[0];
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: cur,
+      maxPlayers: 4,
+      observers: sess.obs.length,
+      canJoin: cur < 4 && sess.state !== 'game_over',
+      canObserve: true,
+      status: sess.state,
+      label: cur < 4 ? `${cur}/4 players` : '4/4 players'
+    });
+  }
+  return list.filter(s => s.status !== 'game_over');
+}
+
+module.exports = { wss, getSessionList };

@@ -119,6 +119,24 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
   .lobby-teams{flex-direction:column}
   .lobby-vs{padding-top:0}
 }
+
+/* ── Standard sessions list ── */
+.std-host-btn{background:#d4af37;color:#1a1a2e;border:none;border-radius:6px;padding:13px 28px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
+.std-host-btn:hover{background:#f0c040}
+.std-sess-section{width:100%;max-width:480px;background:#16213e;border:1px solid #2a2a5a;border-radius:8px;overflow:hidden}
+.std-sess-hdr{padding:10px 14px;font-size:.72rem;letter-spacing:2px;color:#555577;text-transform:uppercase;border-bottom:1px solid #2a2a5a;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#1a1a3a;color:#9090b0;border-radius:10px;padding:1px 7px;font-size:.68rem}
+.std-sess-list{max-height:240px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid #1a1a3a}
+.std-sess-row:last-child{border-bottom:none}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.85rem;color:#e0d5c1}
+.std-sess-meta{font-size:.72rem;color:#555577;margin-top:2px}
+.std-no-sess{padding:16px;text-align:center;font-size:.8rem;color:#555577}
+.std-btn-join{padding:5px 12px;background:#1a3a1a;border:1px solid #3a7a3a;border-radius:4px;color:#80c080;font-size:.78rem;cursor:pointer;font-family:inherit;transition:background .15s}
+.std-btn-join:hover{background:#2a5a2a}
+.std-btn-obs{padding:5px 12px;background:#1a1a3a;border:1px solid #3a3a6a;border-radius:4px;color:#8080c0;font-size:.78rem;cursor:pointer;font-family:inherit;transition:background .15s}
+.std-btn-obs:hover{background:#2a2a5a}
 </style>
 </head>
 <body>
@@ -134,8 +152,22 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
   </div>
 </div>
 
+<!-- Screen: entrance / sessions list -->
+<div id="screen-entrance" class="screen active">
+  <div class="screen-content">
+    <div class="screen-title">Ping Pong</div>
+    <div class="screen-sub">1v1 · 1v2 · 2v2 · First to 11</div>
+    <button id="btn-host" class="std-host-btn">Host New Game</button>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="std-sess-badge">0</span></div>
+      <div class="std-sess-list" id="std-sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+    <a href="/" class="btn-link">← Game Hub</a>
+  </div>
+</div>
+
 <!-- Screen: team selection -->
-<div id="screen-team" class="screen active">
+<div id="screen-team" class="screen">
   <div class="screen-content">
     <div class="screen-title">Ping Pong</div>
     <div class="screen-sub">1v1 · 1v2 · 2v2 · First to 11</div>
@@ -158,6 +190,7 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
       </div>
     </div>
     <button id="btn-observe" class="btn-secondary">👁 Observe</button>
+    <button id="btn-back-entrance" class="btn-secondary" style="font-size:.78rem">← Back to Lobby</button>
     <a href="/" class="btn-link">← Game Hub</a>
   </div>
 </div>
@@ -645,27 +678,92 @@ function confirmName() {
   myName = n;
   localStorage.setItem('phub_name', n);
   nameOverlay.style.display = 'none';
-  connect();
+  showScreen('screen-entrance');
+  startSessPoll();
 }
 
 document.getElementById('name-btn').addEventListener('click', confirmName);
 nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmName(); });
 
+// ── Session polling ──
+let sessPollTimer = null;
+function startSessPoll() {
+  fetchSessions();
+  sessPollTimer = setInterval(fetchSessions, 5000);
+}
+function stopSessPoll() {
+  clearInterval(sessPollTimer);
+  sessPollTimer = null;
+}
+function fetchSessions() {
+  fetch('/api/pingpong/sessions').then(r => r.json()).then(renderSessions).catch(() => {});
+}
+function renderSessions(list) {
+  const badge = document.getElementById('std-sess-badge');
+  const container = document.getElementById('std-sess-list');
+  if (!badge || !container) return;
+  badge.textContent = list.length;
+  if (!list.length) { container.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+  container.innerHTML = list.map(s => `
+    <div class="std-sess-row">
+      <div class="std-sess-info">
+        <div class="std-sess-host">${esc(s.hostName)}'s game</div>
+        <div class="std-sess-meta">${s.label} · ${s.status}</div>
+      </div>
+      ${s.canJoin ? `<button class="std-btn-join" onclick="stdJoinSession()">Join</button>` : ''}
+      ${s.canObserve ? `<button class="std-btn-obs" onclick="stdObserveSession()">Observe</button>` : ''}
+    </div>`).join('');
+}
+function stdJoinSession() {
+  stopSessPoll();
+  if (!ws || ws.readyState !== 1) connect();
+  showScreen('screen-team');
+}
+function stdObserveSession() {
+  stopSessPoll();
+  if (!ws || ws.readyState !== 1) {
+    connect();
+    // send observe after connection opens
+    const origOpen = ws.onopen;
+    ws.onopen = () => { if (origOpen) origOpen(); wsSend({ type: 'observe', name: myName }); };
+  } else {
+    wsSend({ type: 'observe', name: myName });
+  }
+  showScreen('screen-team');
+}
+
+// ── Host button ──
+document.getElementById('btn-host').addEventListener('click', () => {
+  stopSessPoll();
+  connect();
+  showScreen('screen-team');
+});
+
 if (saved) {
   myName = saved;
   nameOverlay.style.display = 'none';
-  connect();
+  showScreen('screen-entrance');
+  startSessPoll();
 }
 
 // ── Team / observe buttons ────────────────────────────────────────────────────
 document.getElementById('btn-join-blue').addEventListener('click', () => {
-  wsSend({ type: 'join', name: myName, team: 0 });
+  if (!ws || ws.readyState !== 1) { connect(); ws.onopen = () => wsSend({ type: 'join', name: myName, team: 0 }); }
+  else wsSend({ type: 'join', name: myName, team: 0 });
 });
 document.getElementById('btn-join-red').addEventListener('click', () => {
-  wsSend({ type: 'join', name: myName, team: 1 });
+  if (!ws || ws.readyState !== 1) { connect(); ws.onopen = () => wsSend({ type: 'join', name: myName, team: 1 }); }
+  else wsSend({ type: 'join', name: myName, team: 1 });
 });
 document.getElementById('btn-observe').addEventListener('click', () => {
-  wsSend({ type: 'observe', name: myName });
+  if (!ws || ws.readyState !== 1) { connect(); ws.onopen = () => wsSend({ type: 'observe', name: myName }); }
+  else wsSend({ type: 'observe', name: myName });
+});
+document.getElementById('btn-back-entrance').addEventListener('click', () => {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  gState = 'init'; myTeam = -1; mySlot = -1; isObs = false; isHost = false;
+  showScreen('screen-entrance');
+  startSessPoll();
 });
 
 // ── Start / rematch ───────────────────────────────────────────────────────────

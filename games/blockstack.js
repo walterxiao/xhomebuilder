@@ -393,14 +393,23 @@ wss.on('connection', (ws) => {
 });
 
 function getSessionList() {
-  return Object.values(sessions).map(s => ({
-    id: s.id,
-    players: s.players.map(p => ({ name: p.name, color: p.color })),
-    started: s.started,
-    gameOver: s.gameOver,
-    blockCount: s.stack.length,
-    maxPlayers: MAX_PLAYERS
-  }));
+  return Object.values(sessions)
+    .filter(s => !s.gameOver)
+    .map(s => {
+      const cur = s.players.length;
+      const host = s.players[0];
+      return {
+        id: s.id,
+        hostName: host ? host.name : '?',
+        players: cur,
+        maxPlayers: MAX_PLAYERS,
+        observers: s.observers ? s.observers.length : 0,
+        canJoin: cur < MAX_PLAYERS,
+        canObserve: true,
+        status: s.started ? 'playing' : 'waiting',
+        label: s.started ? `${s.stack.length} blocks` : `${cur}/${MAX_PLAYERS} players`
+      };
+    });
 }
 
 module.exports = { wss, getSessionList };

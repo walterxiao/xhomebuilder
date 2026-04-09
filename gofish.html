@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Go Fish</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d2b0d;font-family:Georgia,serif;color:#e0d5c1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(212,175,55,.4);margin-bottom:22px}
+.screen{display:none;flex-direction:column;align-items:center;width:100%}
+.screen.active{display:flex}
+/* ---- NAME OVERLAY ---- */
+#name-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:flex;align-items:center;justify-content:center}
+.nov-card{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:40px 36px;text-align:center;width:320px}
+.nov-title{font-size:1.1rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase;margin-bottom:6px}
+.nov-sub{font-size:.78rem;color:#555577;letter-spacing:2px;margin-bottom:20px}
+#name-overlay input{width:100%;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:8px 12px;font-size:.95rem;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:10px}
+#name-overlay input:focus{border-color:#d4af37}
+#name-overlay button{width:100%;background:#16213e;border:1px solid #2a2a5a;border-radius:4px;color:#d4af37;padding:10px;font-size:.9rem;font-family:inherit;cursor:pointer;letter-spacing:1px}
+#name-overlay button:hover{border-color:#d4af37;background:#1e2e54}
+/* ---- LOBBY ---- */
+#lobby-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:36px 48px;width:360px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+#lobby-box label{display:block;font-size:.78rem;letter-spacing:2px;color:#9090b0;margin-bottom:6px;text-transform:uppercase}
+#lobby-box input{width:100%;padding:11px 13px;background:#0f0f24;border:1px solid #3a3a6a;border-radius:4px;color:#e0d5c1;font-size:1rem;font-family:Georgia,serif;outline:none;margin-bottom:16px}
+#lobby-box input:focus{border-color:#d4af37}
+#lobby-box input::placeholder{color:#444466}
+.lobby-hint{font-size:.75rem;color:#555577;margin-top:14px;line-height:1.7;text-align:center}
+.btn-gold{padding:12px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;transition:background .2s}
+.btn-gold:hover{background:#f0c040}
+.btn-ghost{padding:11px 0;background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:4px;font-size:.9rem;font-family:Georgia,serif;letter-spacing:1px;cursor:pointer;transition:color .2s,border-color .2s;width:100%}
+.btn-ghost:hover{color:#e0d5c1;border-color:#9090b0}
+#lobby-err{min-height:18px;font-size:.82rem;color:#e05555;text-align:center;margin-top:8px}
+.back-link{font-size:.75rem;color:#444466;letter-spacing:2px;text-decoration:none;text-transform:uppercase;margin-top:20px;transition:color .2s}
+.back-link:hover{color:#9090b0}
+/* ---- WAITING ---- */
+#waiting-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:32px 40px;width:380px;max-width:92vw;text-align:center}
+#session-id-display{font-size:2rem;letter-spacing:6px;color:#d4af37;margin:12px 0 4px;cursor:pointer;user-select:all}
+#session-id-display:hover{text-decoration:underline}
+.copy-hint{font-size:.72rem;color:#555577;margin-bottom:18px;letter-spacing:1px}
+#waiting-players{margin:14px 0;display:flex;flex-direction:column;gap:8px}
+.waiting-player{background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:9px 14px;font-size:.9rem;display:flex;align-items:center;gap:8px}
+.waiting-player .crown{color:#d4af37;font-size:.8rem}
+#waiting-msg{font-size:.85rem;color:#9090b0;margin-top:10px;letter-spacing:.5px}
+/* ---- GAME ---- */
+#screen-game{padding:10px;gap:0}
+#game-wrap{width:100%;max-width:900px;display:flex;flex-direction:column;gap:10px}
+/* opponents */
+#opponents-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.opp-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:130px}
+.opp-name{font-size:.82rem;letter-spacing:1px;color:#d4af37;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opp-name.active-turn{color:#a0e0a0}
+.mini-cards{display:flex;position:relative;height:42px;min-width:40px;justify-content:center}
+.mini-card{width:26px;height:38px;background:repeating-linear-gradient(135deg,#1a4a9a 0,#1a4a9a 3px,#0a2a6a 3px,#0a2a6a 6px);border-radius:3px;border:1px solid #0a2060;box-shadow:1px 1px 3px rgba(0,0,0,.4);position:absolute}
+.opp-count{font-size:.72rem;color:#9090b0;letter-spacing:.5px}
+.opp-books{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;max-width:120px}
+.book-tile{width:22px;height:22px;background:#2a4a1a;border:1px solid #d4af37;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:bold;color:#d4af37;font-family:Arial,sans-serif}
+/* center */
+#center-row{display:flex;gap:14px;align-items:flex-start;justify-content:center}
+#deck-area{display:flex;flex-direction:column;align-items:center;gap:6px}
+#deck-pile{width:56px;height:80px;background:repeating-linear-gradient(135deg,#1a4a9a 0,#1a4a9a 5px,#0a2a6a 5px,#0a2a6a 10px);border-radius:7px;border:2px solid #0a2060;box-shadow:2px 3px 8px rgba(0,0,0,.5);position:relative;cursor:default}
+#deck-count{font-size:.8rem;color:#9090b0;letter-spacing:.5px}
+#event-log{background:#0f1a0f;border:1px solid #1a3a1a;border-radius:6px;padding:10px 12px;width:340px;max-width:60vw;height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;scrollbar-width:thin;scrollbar-color:#1a3a1a transparent}
+#event-log::-webkit-scrollbar{width:3px}
+#event-log::-webkit-scrollbar-thumb{background:#1a3a1a;border-radius:2px}
+.ev{font-size:.78rem;line-height:1.45;color:#a0b890}
+.ev.ev-ask{color:#b0c0e0}
+.ev.ev-fish{color:#e0c090}
+.ev.ev-book{color:#d4af37}
+.ev.ev-win{color:#a0e0a0}
+.ev.ev-lucky{color:#e0a0e0}
+/* ask panel */
+#ask-panel{background:#1a2e1a;border:1px solid #2a4a2a;border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+#ask-panel.hidden{display:none}
+#turn-label{font-size:.82rem;letter-spacing:1px;color:#a0e0a0}
+#turn-label.waiting{color:#9090b0}
+.ask-section-label{font-size:.7rem;letter-spacing:1.5px;color:#555577;text-transform:uppercase}
+#rank-btns{display:flex;flex-wrap:wrap;gap:6px}
+.rank-btn{padding:5px 10px;background:#0f1a0f;border:1px solid #2a3a2a;border-radius:4px;color:#c0d0b0;font-family:Arial,sans-serif;font-size:.85rem;font-weight:bold;cursor:pointer;transition:all .15s}
+.rank-btn:hover{border-color:#7a9a7a;color:#e0d5c1}
+.rank-btn.selected{background:#1a4a1a;border-color:#d4af37;color:#d4af37;box-shadow:0 0 6px rgba(212,175,55,.3)}
+#target-btns{display:flex;flex-wrap:wrap;gap:6px}
+.target-btn{padding:6px 14px;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;color:#9090b0;font-family:Georgia,serif;font-size:.82rem;cursor:pointer;transition:all .15s}
+.target-btn:hover{border-color:#7a7ab0;color:#e0d5c1}
+.target-btn.selected{background:#1a1a4a;border-color:#8080d4;color:#b0b0f0}
+#ask-btn{padding:10px 28px;background:#2a6a2a;border:none;border-radius:4px;color:#a0e0a0;font-family:Georgia,serif;font-size:.9rem;font-weight:bold;letter-spacing:1px;cursor:pointer;transition:background .2s;align-self:flex-start}
+#ask-btn:hover:not(:disabled){background:#3a8a3a}
+#ask-btn:disabled{background:#1a3a1a;color:#4a6a4a;cursor:default}
+/* your area */
+#your-area{display:flex;flex-direction:column;gap:8px}
+#your-header{display:flex;align-items:center;justify-content:space-between;padding:0 2px}
+#your-label{font-size:.8rem;letter-spacing:1px;color:#9090b0;text-transform:uppercase}
+#your-books-row{display:flex;gap:4px;flex-wrap:wrap}
+#your-hand{display:flex;flex-wrap:wrap;gap:8px;padding:8px 4px;background:#1a3a1a;border:1px solid #2a4a2a;border-radius:8px;min-height:100px;align-items:center;justify-content:center}
+/* cards */
+.card{width:54px;height:78px;background:white;border-radius:6px;border:1px solid #ccc;box-shadow:1px 2px 5px rgba(0,0,0,.35);position:relative;cursor:pointer;transition:transform .15s,box-shadow .15s;flex-shrink:0;user-select:none}
+.card:hover{transform:translateY(-6px);box-shadow:1px 6px 12px rgba(0,0,0,.4)}
+.card.selected{border:2px solid #d4af37;box-shadow:0 0 12px rgba(212,175,55,.7);transform:translateY(-10px)}
+.card.red{color:#cc2222}
+.card .cr{position:absolute;font-size:12px;font-weight:bold;font-family:Arial,sans-serif;line-height:1}
+.card .cr.tl{top:4px;left:5px}
+.card .cr.br{bottom:4px;right:5px;transform:rotate(180deg)}
+.card .cs{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:20px}
+/* chat */
+#chat-box{background:#16213e;border:1px solid #2a2a5a;border-radius:6px;display:flex;flex-direction:column;max-height:130px}
+#chat-msgs{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:5px;scrollbar-width:thin;scrollbar-color:#2a2a5a transparent}
+.chat-msg{font-size:.78rem;line-height:1.4;word-break:break-word}
+.chat-msg .cn{font-weight:bold;margin-right:3px;color:#8080c0}
+.chat-msg .cn.mine{color:#d4af37}
+.chat-msg .ct{color:#b0a880}
+.chat-sys{font-size:.72rem;color:#444466;font-style:italic;text-align:center}
+#chat-row{display:flex;border-top:1px solid #2a2a5a}
+#chat-in{flex:1;background:transparent;border:none;outline:none;color:#e0d5c1;font-family:Georgia,serif;font-size:.78rem;padding:7px 10px}
+#chat-in::placeholder{color:#333355}
+#chat-send{background:transparent;border:none;border-left:1px solid #2a2a5a;color:#555577;font-size:.72rem;padding:0 10px;cursor:pointer;font-family:Georgia,serif}
+#chat-send:hover{color:#d4af37}
+/* game over overlay */
+#gameover-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center}
+#gameover-overlay.visible{display:flex}
+#gameover-box{background:#16213e;border:1px solid #2a2a5a;border-radius:10px;padding:36px 44px;text-align:center;max-width:360px;width:90vw}
+#gameover-box h2{font-size:1.3rem;letter-spacing:3px;color:#d4af37;margin-bottom:20px}
+#scores-list{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.score-row{display:flex;align-items:center;justify-content:space-between;background:#0f0f24;border-radius:4px;padding:9px 14px}
+.score-rank{font-size:.9rem;color:#9090b0;width:28px}
+.score-name{flex:1;text-align:left;font-size:.9rem;color:#e0d5c1}
+.score-books{font-size:.9rem;color:#d4af37;font-weight:bold}
+.score-row.winner .score-name{color:#d4af37}
+@media(max-width:600px){
+  .card{width:42px;height:62px}
+  .card .cr{font-size:10px}
+  .card .cs{font-size:16px}
+  #event-log{width:200px;max-width:44vw}
+  .opp-box{min-width:100px;padding:9px 10px}
+}
+/* ---- STANDARD SESSIONS LIST ---- */
+.std-host-btn{width:100%;padding:12px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;margin-bottom:14px}
+.std-host-btn:hover{background:#f0c040}
+.std-sess-section{width:100%;margin-top:4px}
+.std-sess-hdr{font-size:.72rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#1a1a3a;color:#9090b0;border-radius:10px;padding:1px 7px;font-size:.68rem}
+.std-sess-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:9px 12px}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.85rem;color:#e0d5c1}
+.std-sess-meta{font-size:.72rem;color:#555577;margin-top:2px}
+.std-no-sess{padding:12px;text-align:center;font-size:.8rem;color:#444466;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px}
+.std-btn-join{padding:5px 12px;background:#2a4a1a;border:1px solid #4a8a3a;border-radius:4px;color:#a0d080;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-join:hover{background:#3a6a2a}
+.std-btn-obs{padding:5px 12px;background:#1a1a3a;border:1px solid #3a3a6a;border-radius:4px;color:#8080c0;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-obs:hover{background:#2a2a5a}
+</style>
+</head>
+<body>
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Go Fish</div>
+    <div class="nov-sub">Choose your name</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
+<h1>GO FISH</h1>
+
+<!-- LOBBY -->
+<div id="screen-lobby" class="screen active">
+  <div id="lobby-box">
+    <label for="name-in">Your Name</label>
+    <input id="name-in" type="text" placeholder="enter your name" maxlength="24" autocomplete="off">
+    <button class="std-host-btn" id="join-btn">HOST GAME</button>
+    <div id="lobby-err"></div>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="std-sess-badge">0</span></div>
+      <div class="std-sess-list" id="std-sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+  </div>
+  <a href="/" class="back-link">&#8592; Back to Hub</a>
+</div>
+
+<!-- WAITING -->
+<div id="screen-waiting" class="screen">
+  <div id="waiting-box">
+    <div style="font-size:.75rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:6px">Session</div>
+    <div id="session-id-display">—</div>
+    <div class="copy-hint">Tap to copy · Share with friends</div>
+    <div id="waiting-players"></div>
+    <button class="btn-gold" id="start-btn" style="width:100%;display:none;margin-top:12px">START GAME</button>
+    <div id="waiting-msg">Waiting for host to start…</div>
+    <button class="btn-ghost" id="leave-btn" style="margin-top:12px">Leave</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div id="game-wrap">
+    <div id="opponents-row"></div>
+    <div id="center-row">
+      <div id="deck-area">
+        <div id="deck-pile"></div>
+        <div id="deck-count">— cards</div>
+      </div>
+      <div id="event-log"></div>
+    </div>
+    <div id="ask-panel">
+      <div id="turn-label">—</div>
+      <div>
+        <div class="ask-section-label">Ask for rank:</div>
+        <div id="rank-btns"></div>
+      </div>
+      <div>
+        <div class="ask-section-label">From player:</div>
+        <div id="target-btns"></div>
+      </div>
+      <button id="ask-btn" disabled>Ask</button>
+    </div>
+    <div id="your-area">
+      <div id="your-header">
+        <span id="your-label">Your Hand</span>
+        <div id="your-books-row"></div>
+      </div>
+      <div id="your-hand"></div>
+    </div>
+    <div id="chat-box">
+      <div id="chat-msgs"></div>
+      <div id="chat-row">
+        <input id="chat-in" type="text" placeholder="Chat…" maxlength="200" autocomplete="off">
+        <button id="chat-send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover-overlay">
+  <div id="gameover-box">
+    <h2>GAME OVER</h2>
+    <div id="scores-list"></div>
+    <button class="btn-gold" id="play-again-btn" style="width:100%">Play Again</button>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let ws = null;
+let myIdx = null;
+let myName = '';
+let myHand = [];        // [{r,s}]
+let myBooks = [];       // [rank strings]
+let players = [];       // [{idx,name,cardCount,books}]
+let currentTurn = -1;
+let deckCount = 0;
+let selectedRank = null;
+let selectedTarget = null;
+let sessionId = null;
+let hostIdx = 0;
+let gameStarted = false;
+
+// ── Utils ──
+function isRed(suit) { return suit === '♥' || suit === '♦'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+// ── Card rendering ──
+function makeCardEl(card, clickable) {
+  const d = document.createElement('div');
+  d.className = 'card' + (isRed(card.s) ? ' red' : '');
+  d.innerHTML = `<span class="cr tl">${card.r}<br>${card.s}</span><span class="cs">${card.s}</span><span class="cr br">${card.r}</span>`;
+  if (clickable) {
+    d.dataset.rank = card.r;
+    d.addEventListener('click', () => selectRank(card.r));
+  }
+  return d;
+}
+
+function renderHand() {
+  const el = document.getElementById('your-hand');
+  el.innerHTML = '';
+  const sorted = [...myHand].sort((a, b) => {
+    const order = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    return order.indexOf(a.r) - order.indexOf(b.r);
+  });
+  sorted.forEach(card => {
+    const c = makeCardEl(card, true);
+    if (card.r === selectedRank) c.classList.add('selected');
+    el.appendChild(c);
+  });
+  if (myHand.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:#444466;font-size:.82rem;letter-spacing:.5px';
+    empty.textContent = 'No cards';
+    el.appendChild(empty);
+  }
+}
+
+function renderMyBooks() {
+  const el = document.getElementById('your-books-row');
+  el.innerHTML = '';
+  myBooks.forEach(rank => {
+    const t = document.createElement('div');
+    t.className = 'book-tile';
+    t.title = 'Book of ' + rank;
+    t.textContent = rank;
+    el.appendChild(t);
+  });
+}
+
+function renderOpponents() {
+  const el = document.getElementById('opponents-row');
+  el.innerHTML = '';
+  players.forEach(p => {
+    if (p.idx === myIdx) return;
+    const box = document.createElement('div');
+    box.className = 'opp-box';
+    box.id = 'opp-' + p.idx;
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'opp-name' + (p.idx === currentTurn ? ' active-turn' : '');
+    nameEl.textContent = p.name + (p.idx === currentTurn ? ' ◀' : '');
+    box.appendChild(nameEl);
+
+    // mini face-down cards
+    const mc = document.createElement('div');
+    mc.className = 'mini-cards';
+    const show = Math.min(p.cardCount, 6);
+    for (let i = 0; i < show; i++) {
+      const c = document.createElement('div');
+      c.className = 'mini-card';
+      c.style.left = (i * 7) + 'px';
+      c.style.zIndex = i;
+      mc.appendChild(c);
+    }
+    mc.style.width = (show > 0 ? (show - 1) * 7 + 26 : 26) + 'px';
+    box.appendChild(mc);
+
+    const cnt = document.createElement('div');
+    cnt.className = 'opp-count';
+    cnt.textContent = p.cardCount + ' card' + (p.cardCount !== 1 ? 's' : '');
+    box.appendChild(cnt);
+
+    if (p.books.length > 0) {
+      const brow = document.createElement('div');
+      brow.className = 'opp-books';
+      p.books.forEach(rank => {
+        const t = document.createElement('div');
+        t.className = 'book-tile';
+        t.title = 'Book of ' + rank;
+        t.textContent = rank;
+        brow.appendChild(t);
+      });
+      box.appendChild(brow);
+    }
+
+    el.appendChild(box);
+  });
+}
+
+function renderAskPanel() {
+  const isMyTurn = currentTurn === myIdx;
+  document.getElementById('turn-label').textContent = isMyTurn
+    ? 'Your turn! Choose a rank and player:'
+    : 'Waiting for ' + (players.find(p => p.idx === currentTurn)?.name || '…') + '…';
+  document.getElementById('turn-label').className = isMyTurn ? '' : 'waiting';
+
+  // Rank buttons — only ranks present in hand
+  const ranks = [...new Set(myHand.map(c => c.r))];
+  const order = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+  ranks.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
+  const rbEl = document.getElementById('rank-btns');
+  rbEl.innerHTML = '';
+  ranks.forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'rank-btn' + (r === selectedRank ? ' selected' : '');
+    btn.textContent = r;
+    btn.addEventListener('click', () => selectRank(r));
+    rbEl.appendChild(btn);
+  });
+
+  // Target buttons — only opponents
+  const tbEl = document.getElementById('target-btns');
+  tbEl.innerHTML = '';
+  players.filter(p => p.idx !== myIdx).forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'target-btn' + (p.idx === selectedTarget ? ' selected' : '');
+    btn.textContent = p.name;
+    btn.addEventListener('click', () => selectTarget(p.idx));
+    tbEl.appendChild(btn);
+  });
+
+  // Enable ask button
+  document.getElementById('ask-btn').disabled = !(isMyTurn && selectedRank && selectedTarget !== null);
+
+  // Show/hide rank/target sections only on your turn
+  document.getElementById('ask-panel').classList.toggle('hidden', !gameStarted);
+}
+
+function selectRank(rank) {
+  if (currentTurn !== myIdx) return;
+  selectedRank = (selectedRank === rank) ? null : rank;
+  renderHand();
+  renderAskPanel();
+}
+
+function selectTarget(idx) {
+  if (currentTurn !== myIdx) return;
+  selectedTarget = (selectedTarget === idx) ? null : idx;
+  renderAskPanel();
+}
+
+// ── Event log ──
+function addEvent(text, cls) {
+  const el = document.getElementById('event-log');
+  const div = document.createElement('div');
+  div.className = 'ev ' + (cls || '');
+  div.textContent = text;
+  el.appendChild(div);
+  // Keep last 40
+  while (el.children.length > 40) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── WebSocket ──
+function openWs(onOpen) {
+  if (ws) { ws.onclose = null; ws.close(); }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/gofish`);
+  ws.onopen = onOpen;
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => { if (gameStarted) addEvent('Connection lost.', 'ev-fish'); };
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'joined':
+      sessionId = msg.sessionId;
+      myIdx = msg.yourIdx;
+      hostIdx = msg.hostIdx;
+      players = msg.players;
+      document.getElementById('session-id-display').textContent = sessionId;
+      renderWaitingPlayers();
+      if (myIdx === hostIdx) {
+        document.getElementById('start-btn').style.display = '';
+        document.getElementById('waiting-msg').textContent = 'Waiting for players… (you can start with 2+)';
+      }
+      showScreen('waiting');
+      break;
+
+    case 'lobby_update':
+      players = msg.players;
+      renderWaitingPlayers();
+      break;
+
+    case 'start':
+      gameStarted = true;
+      myHand = msg.yourHand;
+      players = msg.players;
+      deckCount = msg.deckCount;
+      currentTurn = msg.turn;
+      myBooks = [];
+      selectedRank = null;
+      selectedTarget = null;
+      document.getElementById('event-log').innerHTML = '';
+      document.getElementById('chat-msgs').innerHTML = '';
+      document.getElementById('deck-count').textContent = deckCount + ' cards';
+      renderOpponents();
+      renderHand();
+      renderMyBooks();
+      renderAskPanel();
+      addEvent('Game started! ' + players.map(p => p.name).join(', '), 'ev-win');
+      showScreen('game');
+      break;
+
+    case 'state':
+      players = msg.players;
+      deckCount = msg.deckCount;
+      document.getElementById('deck-count').textContent = deckCount + ' cards';
+      renderOpponents();
+      break;
+
+    case 'turn':
+      currentTurn = msg.playerIdx;
+      if (selectedTarget !== null && players.find(p => p.idx === selectedTarget && p.cardCount === 0)) {
+        selectedTarget = null;
+      }
+      renderOpponents();
+      renderAskPanel();
+      break;
+
+    case 'hand_update':
+      myHand = msg.hand;
+      // sync my books from players array if available
+      const me = players.find(p => p.idx === myIdx);
+      if (me) myBooks = [...me.books];
+      renderHand();
+      renderMyBooks();
+      renderAskPanel();
+      break;
+
+    case 'asked': {
+      const asker = msg.askerName;
+      const target = msg.targetName;
+      const isMeAsker = msg.asker === myIdx;
+      const isMeTarget = msg.target === myIdx;
+      let text;
+      if (isMeAsker) text = `You asked ${target} for ${msg.rank}s…`;
+      else if (isMeTarget) text = `${asker} asked YOU for ${msg.rank}s!`;
+      else text = `${asker} asked ${target} for ${msg.rank}s…`;
+      addEvent(text, 'ev-ask');
+      break;
+    }
+
+    case 'got_cards': {
+      const from = players.find(p => p.idx === msg.fromIdx)?.name || '?';
+      addEvent(`You got ${msg.cards.length} ${msg.rank}${msg.cards.length > 1 ? 's' : ''} from ${from}!`, 'ev-win');
+      break;
+    }
+
+    case 'drew': {
+      addEvent(`You drew the ${msg.card.r}${msg.card.s}.`, 'ev-fish');
+      break;
+    }
+
+    case 'lucky': {
+      const name = msg.asker === myIdx ? 'You' : (players.find(p => p.idx === msg.asker)?.name || '?');
+      addEvent(`${name} fished and drew the ${msg.rank} they asked for! Goes again.`, 'ev-lucky');
+      break;
+    }
+
+    case 'book': {
+      const name = msg.playerIdx === myIdx ? 'You' : (players.find(p => p.idx === msg.playerIdx)?.name || '?');
+      addEvent(`${name} completed a book of ${msg.rank}s! 📚`, 'ev-book');
+      // Update local myBooks if it's me
+      if (msg.playerIdx === myIdx && !myBooks.includes(msg.rank)) {
+        myBooks.push(msg.rank);
+        renderMyBooks();
+      }
+      break;
+    }
+
+    case 'game_over':
+      showGameOver(msg.scores);
+      break;
+
+    case 'chat': {
+      const isMine = msg.name === myName;
+      const div = document.createElement('div');
+      div.className = 'chat-msg';
+      const cn = document.createElement('span');
+      cn.className = 'cn' + (isMine ? ' mine' : '');
+      cn.textContent = msg.name + ':';
+      const ct = document.createElement('span');
+      ct.className = 'ct';
+      ct.textContent = ' ' + msg.text;
+      div.appendChild(cn); div.appendChild(ct);
+      const cm = document.getElementById('chat-msgs');
+      cm.appendChild(div);
+      cm.scrollTop = cm.scrollHeight;
+      break;
+    }
+
+    case 'error':
+      document.getElementById('lobby-err').textContent = msg.message;
+      showScreen('lobby');
+      break;
+  }
+}
+
+function showGameOver(scores) {
+  gameStarted = false;
+  const list = document.getElementById('scores-list');
+  list.innerHTML = '';
+  scores.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'score-row' + (i === 0 ? ' winner' : '');
+    row.innerHTML = `<span class="score-rank">${i+1}.</span><span class="score-name">${esc(s.name)}</span><span class="score-books">${s.books} book${s.books!==1?'s':''}</span>`;
+    list.appendChild(row);
+  });
+  document.getElementById('gameover-overlay').classList.add('visible');
+}
+
+// ── Waiting room ──
+function renderWaitingPlayers() {
+  const el = document.getElementById('waiting-players');
+  el.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'waiting-player';
+    if (p.idx === hostIdx) {
+      const cr = document.createElement('span');
+      cr.className = 'crown'; cr.textContent = '★';
+      div.appendChild(cr);
+    }
+    const name = document.createElement('span');
+    name.textContent = p.name + (p.idx === myIdx ? ' (you)' : '');
+    div.appendChild(name);
+    el.appendChild(div);
+  });
+}
+
+// ── Session polling ──
+let sessPollTimer = null;
+function startSessPoll() {
+  fetchSessions();
+  sessPollTimer = setInterval(fetchSessions, 5000);
+}
+function stopSessPoll() {
+  clearInterval(sessPollTimer);
+  sessPollTimer = null;
+}
+function fetchSessions() {
+  fetch('/api/gofish/sessions').then(r => r.json()).then(renderSessions).catch(() => {});
+}
+function renderSessions(list) {
+  const badge = document.getElementById('std-sess-badge');
+  const container = document.getElementById('std-sess-list');
+  if (!badge || !container) return;
+  badge.textContent = list.length;
+  if (!list.length) { container.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+  container.innerHTML = list.map(s => `
+    <div class="std-sess-row">
+      <div class="std-sess-info">
+        <div class="std-sess-host">${esc(s.hostName)}'s game</div>
+        <div class="std-sess-meta">${s.label} · ${s.status}</div>
+      </div>
+      ${s.canJoin ? `<button class="std-btn-join" onclick="stdJoinSession(${s.id})">Join</button>` : ''}
+    </div>`).join('');
+}
+function stdJoinSession(id) {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll();
+  myName = name;
+  openWs(() => wsSend({ type: 'join', name, sessionId: id }));
+}
+
+// ── Lobby ──
+document.getElementById('join-btn').addEventListener('click', doJoin);
+document.getElementById('name-in').addEventListener('keydown', e => { if (e.key === 'Enter') doJoin(); });
+
+function doJoin() {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll();
+  myName = name;
+  openWs(() => wsSend({ type: 'join', name }));
+}
+
+// ── Waiting ──
+document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'start' }));
+document.getElementById('leave-btn').addEventListener('click', () => {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  gameStarted = false;
+  showScreen('lobby');
+  startSessPoll();
+});
+
+document.getElementById('session-id-display').addEventListener('click', () => {
+  if (!sessionId) return;
+  navigator.clipboard?.writeText(String(sessionId)).then(() => {
+    const d = document.getElementById('session-id-display');
+    const old = d.textContent;
+    d.textContent = 'Copied!';
+    setTimeout(() => d.textContent = old, 1200);
+  });
+});
+
+// ── Ask ──
+document.getElementById('ask-btn').addEventListener('click', () => {
+  if (selectedRank === null || selectedTarget === null) return;
+  wsSend({ type: 'ask', rank: selectedRank, target: selectedTarget });
+  selectedRank = null;
+  selectedTarget = null;
+  renderHand();
+  renderAskPanel();
+});
+
+// ── Chat ──
+document.getElementById('chat-send').addEventListener('click', sendChat);
+document.getElementById('chat-in').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+function sendChat() {
+  const text = document.getElementById('chat-in').value.trim();
+  if (!text) return;
+  wsSend({ type: 'chat', text });
+  document.getElementById('chat-in').value = '';
+}
+
+// ── Play Again ──
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  document.getElementById('gameover-overlay').classList.remove('visible');
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  myHand = []; myBooks = []; players = []; currentTurn = -1;
+  selectedRank = null; selectedTarget = null; gameStarted = false;
+  document.getElementById('name-in').value = myName;
+  showScreen('lobby');
+  startSessPoll();
+});
+
+// ── Init ──
+startSessPoll();
+
+// ── Name overlay ──
+window.onNameSet = name => { document.getElementById('name-in').value = name; };
+const HUB_PAGE = 'gofish';
+(function() {
+  function connectPresence(name) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const pw = new WebSocket(`${proto}://${location.host}/ws/presence`);
+    pw.onopen = () => pw.send(JSON.stringify({ type: 'presence_join', name, page: HUB_PAGE }));
+  }
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    window.hubName = val;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+    if (typeof window.onNameSet === 'function') window.onNameSet(val);
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    document.getElementById('nov-input').value = saved;
+    window.hubName = saved;
+    connectPresence(saved);
+    window.onNameSet(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+</script>
+</body>
+</html>

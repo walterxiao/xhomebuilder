@@ -3,7 +3,6 @@ const { WebSocketServer } = require('ws');
 
 const wss = new WebSocketServer({ noServer: true });
 
-let queue = null;
 let nextSessionId = 1;
 const sessions = new Map();
 
@@ -338,7 +337,8 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     switch (msg.type) {
-      case 'chess_join':        handleJoin(ws, msg.name); break;
+      case 'chess_create':      handleCreate(ws, msg.name); break;
+      case 'chess_join':        handleJoin(ws, msg.name, msg.sessionId); break;
       case 'chess_move':        handleMove(ws, msg.from, msg.to, msg.promotion); break;
       case 'chess_resign':      handleResign(ws); break;
       case 'chess_rematch':     handleRematch(ws); break;
@@ -361,48 +361,60 @@ function broadcast(session, obj) {
   session.observers.forEach(o => send(o.ws, obj));
 }
 
-function handleJoin(ws, name) {
+function handleCreate(ws, name) {
   if (!name || typeof name !== 'string') return send(ws, { type: 'chess_error', message: 'Invalid name.' });
   const cleanName = name.trim().slice(0, 24);
   if (!cleanName) return send(ws, { type: 'chess_error', message: 'Please enter a name.' });
 
   ws.chessName = cleanName;
 
-  if (queue && queue.ws.readyState === 1) {
-    const first = queue;
-    queue = null;
+  const sessionId = nextSessionId++;
+  const board = makeBoard();
+  const session = {
+    players: [
+      { ws, name: cleanName, color: 'w' },
+    ],
+    observers: [],
+    board,
+    turn: 'w',
+    phase: 'waiting',
+    castlingRights: { w: { k: true, q: true }, b: { k: true, q: true } },
+    enPassantTarget: null,
+    result: null,
+    resultReason: null,
+    moveHistory: [],
+    rematchVotes: new Set(),
+  };
+  sessions.set(sessionId, session);
 
-    const sessionId = nextSessionId++;
-    const board = makeBoard();
-    const session = {
-      players: [
-        { ws: first.ws, name: first.name, color: 'w' },
-        { ws,           name: cleanName,  color: 'b' },
-      ],
-      observers: [],
-      board,
-      turn: 'w',
-      phase: 'playing',
-      castlingRights: { w: { k: true, q: true }, b: { k: true, q: true } },
-      enPassantTarget: null,
-      result: null,
-      resultReason: null,
-      moveHistory: [],
-      rematchVotes: new Set(),
-    };
-    sessions.set(sessionId, session);
+  ws.sessionId = sessionId;
+  ws.chessColor = 'w';
 
-    first.ws.sessionId = sessionId;
-    first.ws.chessColor = 'w';
-    ws.sessionId = sessionId;
-    ws.chessColor = 'b';
+  send(ws, { type: 'chess_waiting', sessionId });
+}
 
-    send(first.ws, { type: 'chess_start', myColor: 'w', opponentName: cleanName, board, turn: 'w' });
-    send(ws,       { type: 'chess_start', myColor: 'b', opponentName: first.name, board, turn: 'w' });
-  } else {
-    queue = { ws, name: cleanName };
-    send(ws, { type: 'chess_waiting' });
-  }
+function handleJoin(ws, name, sessionId) {
+  if (!name || typeof name !== 'string') return send(ws, { type: 'chess_error', message: 'Invalid name.' });
+  const cleanName = name.trim().slice(0, 24);
+  if (!cleanName) return send(ws, { type: 'chess_error', message: 'Please enter a name.' });
+
+  const session = sessions.get(sessionId);
+  if (!session) return send(ws, { type: 'chess_error', message: 'Session not found.' });
+  if (session.phase !== 'waiting') return send(ws, { type: 'chess_error', message: 'Session is not available.' });
+
+  ws.chessName = cleanName;
+
+  const host = session.players[0];
+  session.players.push({ ws, name: cleanName, color: 'b' });
+
+  ws.sessionId = sessionId;
+  ws.chessColor = 'b';
+
+  session.phase = 'playing';
+  const { board } = session;
+
+  send(host.ws, { type: 'chess_start', myColor: 'w', opponentName: cleanName, board, turn: 'w' });
+  send(ws,      { type: 'chess_start', myColor: 'b', opponentName: host.name, board, turn: 'w' });
 }
 
 function handleMove(ws, from, to, promotion) {
@@ -596,11 +608,6 @@ function handleChat(ws, text) {
 }
 
 function handleDisconnect(ws) {
-  if (queue && queue.ws === ws) {
-    queue = null;
-    return;
-  }
-
   if (ws.isObserver) {
     const session = sessions.get(ws.observingSessionId);
     if (session) {
@@ -625,4 +632,25 @@ function handleDisconnect(ws) {
   ws.sessionId = null;
 }
 
-module.exports = { wss };
+function getSessionList() {
+  const list = [];
+  for (const [id, session] of sessions) {
+    if (session.phase === 'over') continue;
+    const host = session.players.find(p => p.color === 'w');
+    const playerCount = session.players.length;
+    list.push({
+      id,
+      hostName: host ? host.name : '?',
+      players: playerCount,
+      maxPlayers: 2,
+      observers: session.observers.length,
+      canJoin: playerCount === 1,
+      canObserve: playerCount === 2,
+      status: playerCount === 1 ? 'waiting' : 'playing',
+      label: playerCount === 1 ? 'Waiting for opponent' : `${session.moveHistory.length} moves`,
+    });
+  }
+  return list;
+}
+
+module.exports = { wss, getSessionList };

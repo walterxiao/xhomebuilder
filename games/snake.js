@@ -4,7 +4,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLS = 25, ROWS = 20;
-const TICK_MS = 200;
+const TICK_MS = 300;
 const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 1;
 const INIT_LEN = 4;

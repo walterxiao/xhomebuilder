@@ -157,7 +157,7 @@ function tick(sess) {
       p.score++;
       sess.food = sess.food.filter(f => `${f.x},${f.y}` !== k);
       // Auto-poop every 10 food: snake doesn't grow, tail becomes poop
-      if (p.score % 10 === 0 && p.body.length >= 2) {
+      if (p.score % 5 === 0 && p.body.length >= 2) {
         const tail = p.body.pop();
         const poopSet = new Set(sess.poops.map(pp => `${pp.x},${pp.y}`));
         if (!poopSet.has(`${tail.x},${tail.y}`)) {
@@ -218,7 +218,7 @@ function tick(sess) {
 
 // ── Cleaner ───────────────────────────────────────────────────────────────────
 function spawnCleaner(sess) {
-  if (!sess.started || sess.gameOver || sess.cleaner || !sess.poops.length) return;
+  if (!sess.started || sess.gameOver || sess.cleaner || sess.poops.length < 5) return;
   const snakeOcc = new Set();
   for (const p of sess.players) if (p.alive) for (const seg of p.body) snakeOcc.add(`${seg.x},${seg.y}`);
   const taken = new Set([...snakeOcc, ...sess.food.map(f=>`${f.x},${f.y}`), ...sess.poops.map(p=>`${p.x},${p.y}`)]);
@@ -235,7 +235,7 @@ function spawnCleaner(sess) {
 
 // Schedule cleaner to spawn 5s after the first poop appears
 function scheduleCleaner(sess) {
-  if (sess.cleaner || sess.cleanerTimeout || !sess.poops.length || !sess.started || sess.gameOver) return;
+  if (sess.cleaner || sess.cleanerTimeout || sess.poops.length < 5 || !sess.started || sess.gameOver) return;
   sess.cleanerTimeout = setTimeout(() => {
     sess.cleanerTimeout = null;
     spawnCleaner(sess);

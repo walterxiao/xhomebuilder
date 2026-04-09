@@ -9,7 +9,6 @@ const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 2;
 const INIT_LEN = 4;
 const WIN_BONUS = 5;
-const POOP_COOLDOWN_MS = 2500;
 
 const DIRS = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
 const OPPOSITE = { up:'down', down:'up', left:'right', right:'left' };
@@ -40,7 +39,7 @@ const sessions = new Map();
 
 function mkSess() {
   const s = { id: nextId++, players: [], obs: [], food: [], poops: [],
-    cleaner: null, cleanerTickCount: 0, cleanerTimer: null,
+    cleaner: null, cleanerTickCount: 0, cleanerTimeout: null,
     started: false, gameOver: false, interval: null };
   sessions.set(s.id, s);
   return s;
@@ -75,8 +74,8 @@ function startGame(sess) {
   sess.poops = [];
   sess.cleaner = null;
   sess.cleanerTickCount = 0;
-  if (sess.cleanerTimer) clearInterval(sess.cleanerTimer);
-  sess.cleanerTimer = setInterval(() => spawnCleaner(sess), 30000);
+  if (sess.cleanerTimeout) clearTimeout(sess.cleanerTimeout);
+  sess.cleanerTimeout = null;
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -148,6 +147,7 @@ function tick(sess) {
   }
 
   // 5. Move snakes
+  let autoPooped = false;
   for (const h of newHeads) {
     const p = h.p;
     if (!p.alive) continue;
@@ -156,9 +156,23 @@ function tick(sess) {
     if (foodKeys.has(k)) {
       p.score++;
       sess.food = sess.food.filter(f => `${f.x},${f.y}` !== k);
+      // Auto-poop every 10 food: snake doesn't grow, tail becomes poop
+      if (p.score % 10 === 0 && p.body.length >= 2) {
+        const tail = p.body.pop();
+        const poopSet = new Set(sess.poops.map(pp => `${pp.x},${pp.y}`));
+        if (!poopSet.has(`${tail.x},${tail.y}`)) {
+          sess.poops.push({ x: tail.x, y: tail.y });
+          autoPooped = true;
+        }
+      }
     } else {
       p.body.pop();
     }
+  }
+
+  if (autoPooped) {
+    mergePoop(sess);
+    scheduleCleaner(sess);
   }
 
   spawnFood(sess);
@@ -186,6 +200,7 @@ function tick(sess) {
     sess.interval = null;
     sess.gameOver = true;
     sess.cleaner = null;
+    if (sess.cleanerTimeout) { clearTimeout(sess.cleanerTimeout); sess.cleanerTimeout = null; }
     let winner = null;
     if (alive.length === 1) { alive[0].score += WIN_BONUS; winner = alive[0].name; }
     else {
@@ -216,6 +231,15 @@ function spawnCleaner(sess) {
   for (const pos of edges) {
     if (!taken.has(`${pos.x},${pos.y}`)) { sess.cleaner = { x:pos.x, y:pos.y, leaving:false }; return; }
   }
+}
+
+// Schedule cleaner to spawn 5s after the first poop appears
+function scheduleCleaner(sess) {
+  if (sess.cleaner || sess.cleanerTimeout || !sess.poops.length || !sess.started || sess.gameOver) return;
+  sess.cleanerTimeout = setTimeout(() => {
+    sess.cleanerTimeout = null;
+    spawnCleaner(sess);
+  }, 5000);
 }
 
 // BFS from cleaner to nearest poop, avoiding snake bodies and food; returns next step or null
@@ -358,7 +382,7 @@ wss.on('connection', ws => {
       const name = String(m.name || '').trim().slice(0, 24);
       if (!name) return;
       sess = mkSess();
-      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, lastPoop: 0 };
+      me = { ws, name, color: COLORS[0], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
       sess.players.push(me);
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
@@ -371,7 +395,7 @@ wss.on('connection', ws => {
       if (target.started) return send(ws, { type: 'snake_err', message: 'Game already started.' });
       if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
-      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, lastPoop: 0 };
+      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0 };
       sess.players.push(me);
       bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
@@ -398,31 +422,6 @@ wss.on('connection', ws => {
       if (!sess || !me || sess.players[0] !== me || !sess.gameOver) return;
       startGame(sess);
 
-    } else if (m.type === 'poop') {
-      if (!me || !me.alive || !sess.started || sess.gameOver) return;
-      if (me.body.length < 2) return;  // need at least head + 1 segment
-      const now = Date.now();
-      if (now - me.lastPoop < POOP_COOLDOWN_MS) return;
-
-      // Shorten snake by removing tail, poop at that position
-      const tail = me.body.pop();
-      const pos = { x: tail.x, y: tail.y };
-
-      // Skip if a poop already exists there
-      const existing = new Set(sess.poops.map(p => `${p.x},${p.y}`));
-      if (existing.has(`${pos.x},${pos.y}`)) { me.body.push(tail); return; }
-
-      me.lastPoop = now;
-      sess.poops.push(pos);
-      mergePoop(sess);
-
-      bcast(sess, { type: 'snake_tick',
-        snakes: sess.players.map(p => ({ body: p.body, alive: p.alive })),
-        food: sess.food,
-        poops: sess.poops,
-        scores: sess.players.map(p => p.score),
-        aliveCount: sess.players.filter(p => p.alive).length,
-      });
     }
   });
 
@@ -433,7 +432,7 @@ wss.on('connection', ws => {
       if (!sess.started || sess.gameOver) {
         sess.players = sess.players.filter(p => p !== me);
         if (sess.players.length === 0) {
-          if (sess.cleanerTimer) clearInterval(sess.cleanerTimer);
+          if (sess.cleanerTimeout) clearTimeout(sess.cleanerTimeout);
           sessions.delete(sess.id);
         } else bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       }

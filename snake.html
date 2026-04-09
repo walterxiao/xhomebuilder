@@ -159,6 +159,10 @@ let rafId = null;
 let collisionAnims = []; // { snakeIdx, bounceDir{x,y}, startTime, flyParts[{x,y,vx,vy,color}] }
 const BOUNCE_DUR = 280;  // ms
 const FLY_DUR    = 650;  // ms
+let prevCleaner = null;
+let cleanerMoveTime = 0;
+let prevElephant = null;
+let elephantMoveTime = 0;
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -206,7 +210,9 @@ function handle(msg) {
       break;
 
     case 'snake_start':
-      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null };
+      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
+      prevCleaner = null; cleanerMoveTime = 0;
+      prevElephant = null; elephantMoveTime = 0;
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
@@ -223,7 +229,21 @@ function handle(msg) {
       gameState.snakes = msg.snakes;
       gameState.food = msg.food;
       gameState.poops = msg.poops || gameState.poops;
+      // Track cleaner movement for smooth interpolation
+      if (msg.cleaner && gameState.cleaner &&
+          (msg.cleaner.x !== gameState.cleaner.x || msg.cleaner.y !== gameState.cleaner.y)) {
+        prevCleaner = { ...gameState.cleaner };
+        cleanerMoveTime = Date.now();
+      }
       gameState.cleaner = msg.cleaner !== undefined ? msg.cleaner : gameState.cleaner;
+      // Track elephant movement for smooth interpolation
+      if (msg.elephant && gameState.elephant &&
+          (msg.elephant.x !== gameState.elephant.x || msg.elephant.y !== gameState.elephant.y)) {
+        prevElephant = { ...gameState.elephant };
+        elephantMoveTime = Date.now();
+      }
+      if (!gameState.elephant && msg.elephant) elephantMoveTime = Date.now(); // first appearance
+      gameState.elephant = msg.elephant !== undefined ? msg.elephant : gameState.elephant;
       lastTickTime = Date.now();
       // Detect newly-dizzy snakes → spawn collision animation
       for (let i = 0; i < gameState.snakes.length; i++) {
@@ -338,22 +358,50 @@ function renderGame() {
     ctx.shadowBlur = 0;
   }
 
-  // Cleaner
+  // Cleaner — smoothly interpolated (moves every 2 ticks = 400ms)
   if (gameState.cleaner) {
-    const { x, y, leaving } = gameState.cleaner;
+    const { leaving } = gameState.cleaner;
+    let crx = gameState.cleaner.x, cry = gameState.cleaner.y;
+    if (prevCleaner && cleanerMoveTime > 0) {
+      const ct = Math.min(1, (now - cleanerMoveTime) / (TICK_MS * 2));
+      crx = prevCleaner.x + (gameState.cleaner.x - prevCleaner.x) * ct;
+      cry = prevCleaner.y + (gameState.cleaner.y - prevCleaner.y) * ct;
+    }
     ctx.globalAlpha = leaving ? 0.55 : 1;
     ctx.fillStyle = leaving ? '#fff8cc' : '#f0f8ff';
     ctx.shadowColor = leaving ? '#ffdd44' : '#88ddff';
     ctx.shadowBlur = 16;
-    ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
+    ctx.fillRect(crx * CELL + 1, cry * CELL + 1, CELL - 2, CELL - 2);
     ctx.shadowBlur = 0;
     ctx.strokeStyle = leaving ? '#886600' : '#1166aa';
     ctx.lineWidth = Math.max(1, CELL * 0.15);
     ctx.lineCap = 'round';
-    const cx = x * CELL + CELL/2, cy = y * CELL + CELL/2, r = CELL * 0.26;
-    ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+    const ccx = crx * CELL + CELL/2, ccy = cry * CELL + CELL/2, cr = CELL * 0.26;
+    ctx.beginPath(); ctx.moveTo(ccx - cr, ccy); ctx.lineTo(ccx + cr, ccy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ccx, ccy - cr); ctx.lineTo(ccx, ccy + cr); ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+
+  // Elephant — 3×3 tiles, smoothly interpolated
+  if (gameState.elephant) {
+    let erx = gameState.elephant.x, ery = gameState.elephant.y;
+    if (prevElephant && elephantMoveTime > 0) {
+      const et = Math.min(1, (now - elephantMoveTime) / (TICK_MS * 2));
+      erx = prevElephant.x + (gameState.elephant.x - prevElephant.x) * et;
+      ery = prevElephant.y + (gameState.elephant.y - prevElephant.y) * et;
+    }
+    // Faint danger zone over 3×3 area
+    ctx.fillStyle = 'rgba(120,60,0,0.12)';
+    ctx.fillRect((erx-1)*CELL, (ery-1)*CELL, CELL*3, CELL*3);
+    // Elephant emoji (mirrored to face right)
+    ctx.save();
+    ctx.translate(erx * CELL + CELL / 2, ery * CELL + CELL / 2);
+    ctx.scale(-1, 1);
+    ctx.font = `${Math.floor(CELL * 2.8)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🐘', 0, 0);
+    ctx.restore();
   }
 
   // Snakes — interpolated + bounce offset on collision
@@ -656,7 +704,10 @@ document.getElementById('quit-btn').addEventListener('click', returnToLobby);
 function returnToLobby() {
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
-  gameState = null; prevSnakes = null; collisionAnims = []; sessionId = null; isHost = false; isObs = false; myIdx = -1;
+  gameState = null; prevSnakes = null; collisionAnims = [];
+  prevCleaner = null; cleanerMoveTime = 0;
+  prevElephant = null; elephantMoveTime = 0;
+  sessionId = null; isHost = false; isObs = false; myIdx = -1;
   document.getElementById('name-in').value = myName;
   showScreen('lobby');
   startPoll();

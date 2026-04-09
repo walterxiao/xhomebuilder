@@ -40,6 +40,7 @@ const sessions = new Map();
 function mkSess() {
   const s = { id: nextId++, players: [], obs: [], food: [], poops: [],
     cleaner: null, cleanerTickCount: 0, cleanerTimeout: null,
+    elephant: null, elephantTimer: null,
     started: false, gameOver: false, interval: null };
   sessions.set(s.id, s);
   return s;
@@ -76,6 +77,9 @@ function startGame(sess) {
   sess.cleanerTickCount = 0;
   if (sess.cleanerTimeout) clearTimeout(sess.cleanerTimeout);
   sess.cleanerTimeout = null;
+  if (sess.elephantTimer) clearInterval(sess.elephantTimer);
+  sess.elephantTimer = setInterval(() => spawnElephant(sess), 30000);
+  sess.elephant = null;
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -99,6 +103,7 @@ function startGame(sess) {
     food: sess.food,
     poops: [],
     cleaner: null,
+    elephant: null,
   });
 
   if (sess.interval) clearInterval(sess.interval);
@@ -126,12 +131,15 @@ function tick(sess) {
     newHeads.push({ x: p.body[0].x + dx, y: p.body[0].y + dy, p, skip: false });
   }
 
-  // 2. Wall + poop + cleaner collisions → shrink, don't move
+  // 2. Wall + poop + cleaner + elephant collisions → shrink, don't move
   const poopKeys = new Set(sess.poops.map(p => `${p.x},${p.y}`));
   for (const h of newHeads) {
+    const hitElephant = sess.elephant &&
+      Math.abs(h.x - sess.elephant.x) <= 1 && Math.abs(h.y - sess.elephant.y) <= 1;
     if (h.x < 0 || h.x >= COLS || h.y < 0 || h.y >= ROWS ||
         poopKeys.has(`${h.x},${h.y}`) ||
-        (sess.cleaner && !sess.cleaner.leaving && h.x === sess.cleaner.x && h.y === sess.cleaner.y)) {
+        (sess.cleaner && !sess.cleaner.leaving && h.x === sess.cleaner.x && h.y === sess.cleaner.y) ||
+        hitElephant) {
       applyCollision(h.p);
       h.skip = true;
     }
@@ -201,9 +209,12 @@ function tick(sess) {
 
   spawnFood(sess);
 
-  // Move cleaner every 2 ticks
+  // Move cleaner + elephant every 2 ticks
   sess.cleanerTickCount++;
-  if (sess.cleaner && sess.cleanerTickCount % 2 === 0) moveCleaner(sess);
+  if (sess.cleanerTickCount % 2 === 0) {
+    if (sess.cleaner) moveCleaner(sess);
+    if (sess.elephant) moveElephant(sess);
+  }
 
   const alive = sess.players.filter(p => p.alive);
   const total = sess.players.length;
@@ -215,6 +226,7 @@ function tick(sess) {
     food: sess.food,
     poops: sess.poops,
     cleaner: sess.cleaner,
+    elephant: sess.elephant,
     aliveCount: alive.length,
   });
 
@@ -223,7 +235,9 @@ function tick(sess) {
     sess.interval = null;
     sess.gameOver = true;
     sess.cleaner = null;
+    sess.elephant = null;
     if (sess.cleanerTimeout) { clearTimeout(sess.cleanerTimeout); sess.cleanerTimeout = null; }
+    if (sess.elephantTimer)  { clearInterval(sess.elephantTimer);  sess.elephantTimer = null;  }
     let winner = null;
     if (alive.length === 1) { alive[0].score += WIN_BONUS; winner = alive[0].name; }
     else {
@@ -338,6 +352,51 @@ function moveCleaner(sess) {
   if (sess.poops.some(p=>`${p.x},${p.y}`===nk)) {
     sess.poops = sess.poops.filter(p=>`${p.x},${p.y}`!==nk);
     if (sess.poops.length === 0) sess.cleaner = { x:next.x, y:next.y, leaving:true };
+  }
+}
+
+// ── Elephant ──────────────────────────────────────────────────────────────────
+function spawnElephant(sess) {
+  if (!sess.started || sess.gameOver || sess.elephant) return;
+  // Centre row kept at least 1 cell from top/bottom so 3×3 body fits
+  const cy = 1 + Math.floor(Math.random() * (ROWS - 2));
+  sess.elephant = { x: -2, y: cy }; // starts fully off left edge
+}
+
+function moveElephant(sess) {
+  if (!sess.elephant) return;
+  const { x: cx, y: cy } = sess.elephant;
+  const newCX = cx + 1;
+
+  // Drop a single poop in the column the elephant just vacated (cx-1)
+  const prevCol = cx - 1;
+  if (prevCol >= 0 && Math.random() < 0.28) {
+    const poopRow = (cy - 1) + Math.floor(Math.random() * 3);
+    const pk = `${prevCol},${poopRow}`;
+    const poopSet = new Set(sess.poops.map(p => `${p.x},${p.y}`));
+    const foodSet = new Set(sess.food.map(f => `${f.x},${f.y}`));
+    const snakeOcc = new Set();
+    for (const p of sess.players) if (p.alive) for (const s of p.body) snakeOcc.add(`${s.x},${s.y}`);
+    if (!poopSet.has(pk) && !foodSet.has(pk) && !snakeOcc.has(pk)) {
+      sess.poops.push({ x: prevCol, y: poopRow });
+      mergePoop(sess);
+      scheduleCleaner(sess);
+    }
+  }
+
+  // Disappear when 3×3 area fully exits right edge
+  if (newCX - 1 >= COLS) { sess.elephant = null; return; }
+  sess.elephant = { x: newCX, y: cy };
+
+  // Collide with snakes whose bodies are inside the new 3×3 footprint
+  const hit = new Set();
+  for (const p of sess.players) {
+    if (!p.alive) continue;
+    for (const seg of p.body) {
+      if (Math.abs(seg.x - newCX) <= 1 && Math.abs(seg.y - cy) <= 1 && !hit.has(p)) {
+        hit.add(p); applyCollision(p); break;
+      }
+    }
   }
 }
 
@@ -459,6 +518,7 @@ wss.on('connection', ws => {
         sess.players = sess.players.filter(p => p !== me);
         if (sess.players.length === 0) {
           if (sess.cleanerTimeout) clearTimeout(sess.cleanerTimeout);
+          if (sess.elephantTimer)  clearInterval(sess.elephantTimer);
           sessions.delete(sess.id);
         } else bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       }

@@ -6,7 +6,8 @@
 <title>Snake · Game Hub</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+html{height:100%;overflow:hidden}
+body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:hidden;overscroll-behavior:none;touch-action:pan-x pan-y}
 .screen{display:none;flex-direction:column;align-items:center;width:100%;padding:10px 16px 16px;gap:10px}
 .screen.active{display:flex}
 /* ── Title ── */
@@ -457,16 +458,19 @@ const poopBtn = document.getElementById('dpad-poop');
 poopBtn.addEventListener('touchstart', e => { e.preventDefault(); doPoop(); }, { passive: false });
 poopBtn.addEventListener('click', doPoop);
 
-// Full-screen swipe (game screen only, ignores d-pad taps)
+// Full-screen touch: block scroll everywhere except scrollable UI containers,
+// and detect swipes on the game screen.
 let touchStart = null;
 let swipeHandled = false;
 document.addEventListener('touchstart', e => {
-  if (!document.getElementById('screen-game').classList.contains('active')) return;
   if (e.target.closest('#dpad')) return;
   touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   swipeHandled = false;
 }, { passive: true });
 document.addEventListener('touchmove', e => {
+  // Allow scroll only inside explicitly scrollable containers (session list)
+  if (!e.target.closest('.std-sess-list')) e.preventDefault();
+  // Swipe direction detection (game screen only)
   if (!touchStart || swipeHandled) return;
   if (!document.getElementById('screen-game').classList.contains('active')) return;
   const dx = e.touches[0].clientX - touchStart.x;
@@ -475,7 +479,7 @@ document.addEventListener('touchmove', e => {
   if (Math.abs(dx) > Math.abs(dy)) sendDir(dx > 0 ? 'right' : 'left');
   else sendDir(dy > 0 ? 'down' : 'up');
   swipeHandled = true;
-}, { passive: true });
+}, { passive: false });
 document.addEventListener('touchend', () => { touchStart = null; swipeHandled = false; }, { passive: true });
 
 // ── Session polling ───────────────────────────────────────────────────────────

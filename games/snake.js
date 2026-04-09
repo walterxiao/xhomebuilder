@@ -55,7 +55,7 @@ function occupiedSet(sess) {
 }
 
 function spawnFood(sess) {
-  const target = Math.max(2, sess.players.filter(p => p.alive).length * FOOD_PER_PLAYER);
+  const target = sess.players.filter(p => p.alive).length * FOOD_PER_PLAYER;
   const occ = occupiedSet(sess);
   let attempts = 0;
   while (sess.food.length < target && attempts++ < 2000) {

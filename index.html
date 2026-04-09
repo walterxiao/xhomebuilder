@@ -105,37 +105,19 @@
       min-height: 1em;
     }
 
-    /* ── Online panel ── */
-    #online-panel {
-      margin-top: 40px;
-      text-align: center;
-    }
-
+    /* ── Online count (top) ── */
     #online-count {
       font-size: 0.78rem;
       letter-spacing: 2px;
       color: #444466;
       text-transform: uppercase;
-      margin-bottom: 8px;
+      margin-top: -30px;
+      margin-bottom: 36px;
     }
 
     #online-count span {
-      color: #6060a0;
-    }
-
-    .online-row {
-      font-size: 0.78rem;
-      color: #555577;
-      margin-bottom: 3px;
-    }
-
-    .online-row .ol-label {
-      color: #444466;
-      letter-spacing: 1px;
-    }
-
-    .online-row .ol-name {
-      color: #7070a0;
+      color: #7070aa;
+      font-weight: bold;
     }
 
     /* ── Name editor ── */
@@ -233,6 +215,7 @@
 
   <h1>Game Hub</h1>
   <p class="subtitle">Choose a game</p>
+  <div id="online-count"><span>0</span> online</div>
 
   <div class="games-grid" id="games-grid">
     <a href="/connect5" class="game-card" data-game="connect5">
@@ -330,56 +313,14 @@
     <span id="name-saved-hint">saved</span>
   </div>
 
-  <div id="online-panel">
-    <div id="online-count"><span>0</span> online</div>
-    <div id="online-rows"></div>
-  </div>
 
 <script>
-const PAGE_LABELS = {
-  connect5:   'Connect-5',
-  airplane:   'Airplane Chess',
-  battleship: 'Battleship',
-  pictionary: 'Pictionary',
-  chess:      'Chess',
-  lobby:      'Lobby',
-};
-
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 window.onPresenceUpdate = function(users) {
-  // Update total count
   document.querySelector('#online-count span').textContent = users.length;
-
-  // Group by page
-  const groups = {};
-  users.forEach(u => {
-    const p = u.page || 'lobby';
-    if (!groups[p]) groups[p] = [];
-    groups[p].push(u.name);
-  });
-
-  // Update per-game player lists on cards
-  ['connect5', 'airplane', 'battleship', 'pictionary', 'chess'].forEach(page => {
-    const el = document.getElementById(`players-${page}`);
-    if (!el) return;
-    const names = groups[page] || [];
-    el.textContent = names.length ? names.join(', ') : '';
-  });
-
-  // Render online rows for all sections including lobby
-  const rowsEl = document.getElementById('online-rows');
-  const allPages = ['lobby', 'connect5', 'airplane', 'battleship', 'pictionary', 'chess'];
-  let html = '';
-  allPages.forEach(page => {
-    if (groups[page] && groups[page].length > 0) {
-      const names = groups[page].map(n => `<span class="ol-name">${esc(n)}</span>`).join(', ');
-      html += `<div class="online-row"><span class="ol-label">${PAGE_LABELS[page]}:</span> ${names}</div>`;
-    }
-  });
-  rowsEl.innerHTML = html;
 };
 
 // ── Name overlay + Presence ───────────────────────────────────────────────────

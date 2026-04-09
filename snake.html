@@ -156,6 +156,9 @@ let TICK_MS = 200;
 let lastTickTime = 0;
 let prevSnakes = null;
 let rafId = null;
+let collisionAnims = []; // { snakeIdx, bounceDir{x,y}, startTime, flyParts[{x,y,vx,vy,color}] }
+const BOUNCE_DUR = 280;  // ms
+const FLY_DUR    = 650;  // ms
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -214,7 +217,7 @@ function handle(msg) {
       if (!rafId) rafId = requestAnimationFrame(renderLoop);
       break;
 
-    case 'snake_tick':
+    case 'snake_tick': {
       if (!gameState) break;
       prevSnakes = gameState.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
       gameState.snakes = msg.snakes;
@@ -222,8 +225,28 @@ function handle(msg) {
       gameState.poops = msg.poops || gameState.poops;
       gameState.cleaner = msg.cleaner !== undefined ? msg.cleaner : gameState.cleaner;
       lastTickTime = Date.now();
+      // Detect newly-dizzy snakes → spawn collision animation
+      for (let i = 0; i < gameState.snakes.length; i++) {
+        const prev = prevSnakes[i], curr = gameState.snakes[i];
+        if (!prev || !curr || curr.dizzy === 0 || prev.dizzy > 0) continue;
+        // Direction the head was facing (head minus neck)
+        const dir = prev.body.length >= 2
+          ? { x: prev.body[0].x - prev.body[1].x, y: prev.body[0].y - prev.body[1].y }
+          : { x: 1, y: 0 };
+        const color = (gameState.players[i] || {}).color || '#888';
+        // Segments that were removed (up to 5 tail blocks)
+        const removed = prev.body.slice(curr.body.length).slice(-5);
+        const baseAngle = Math.atan2(-dir.y, -dir.x); // away from travel direction
+        const flyParts = removed.map(seg => {
+          const a = baseAngle + (Math.random() - 0.5) * Math.PI * 1.4;
+          const spd = 4 + Math.random() * 6;
+          return { x: seg.x + 0.5, y: seg.y + 0.5, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, color };
+        });
+        collisionAnims.push({ snakeIdx: i, bounceDir: { x: -dir.x, y: -dir.y }, startTime: lastTickTime, flyParts });
+      }
       renderScoreBar();
       break;
+    }
 
     case 'snake_over':
       if (gameState) { gameState.snakes = gameState.snakes; }
@@ -333,8 +356,9 @@ function renderGame() {
     ctx.globalAlpha = 1;
   }
 
-  // Snakes — interpolated between previous and current tick positions
-  const alpha = Math.min(1, (Date.now() - lastTickTime) / TICK_MS);
+  // Snakes — interpolated + bounce offset on collision
+  const now = Date.now();
+  const alpha = Math.min(1, (now - lastTickTime) / TICK_MS);
   const prev = prevSnakes || snakes;
   for (let i = 0; i < snakes.length; i++) {
     const sn = snakes[i];
@@ -344,11 +368,20 @@ function renderGame() {
     const alive = sn.alive;
     const dizzy = sn.dizzy > 0;
 
-    // Dizzy snakes flash rapidly
-    if (dizzy) {
-      ctx.globalAlpha = Math.sin(Date.now() / 60) > 0 ? 1.0 : 0.3;
+    // Bounce offset: spring backward on collision then return to 0
+    let bx = 0, by = 0;
+    const anim = collisionAnims.find(a => a.snakeIdx === i);
+    if (anim) {
+      const t = (now - anim.startTime) / BOUNCE_DUR;
+      if (t < 1) {
+        const bounce = Math.sin(t * Math.PI) * 0.75; // peak at t=0.5
+        bx = anim.bounceDir.x * bounce;
+        by = anim.bounceDir.y * bounce;
+      }
     }
 
+    // Dizzy snakes flash rapidly
+    ctx.globalAlpha = (dizzy && Math.sin(now / 55) < 0) ? 0.28 : 1.0;
     ctx.fillStyle = alive ? color : color + '44';
     ctx.shadowColor = alive ? color : 'transparent';
     ctx.shadowBlur = alive ? 6 : 0;
@@ -356,23 +389,63 @@ function renderGame() {
     for (let j = 0; j < sn.body.length; j++) {
       const seg = sn.body[j];
       const pseg = (pn.body && pn.body[j]) ? pn.body[j] : seg;
-      const rx = pseg.x + (seg.x - pseg.x) * alpha;
-      const ry = pseg.y + (seg.y - pseg.y) * alpha;
+      const rx = pseg.x + (seg.x - pseg.x) * alpha + bx;
+      const ry = pseg.y + (seg.y - pseg.y) * alpha + by;
       const pad = j === 0 ? 1 : 2;
       ctx.fillRect(rx * CELL + pad, ry * CELL + pad, CELL - pad*2, CELL - pad*2);
     }
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
 
-    // Draw head with eyes
+    // Head eyes
     if (alive && sn.body.length > 0) {
       const seg = sn.body[0];
       const pseg = (pn.body && pn.body[0]) ? pn.body[0] : seg;
-      const hx = pseg.x + (seg.x - pseg.x) * alpha;
-      const hy = pseg.y + (seg.y - pseg.y) * alpha;
+      const hx = pseg.x + (seg.x - pseg.x) * alpha + bx;
+      const hy = pseg.y + (seg.y - pseg.y) * alpha + by;
       ctx.fillStyle = '#000';
-      ctx.fillRect(hx * CELL + CELL * 0.3,         hy * CELL + CELL * 0.3, 2, 2);
+      ctx.fillRect(hx * CELL + CELL * 0.3,              hy * CELL + CELL * 0.3, 2, 2);
       ctx.fillRect(hx * CELL + CELL * 0.3 + CELL * 0.35, hy * CELL + CELL * 0.3, 2, 2);
+    }
+  }
+
+  // Fly-out particles (removed tail blocks flying off screen)
+  for (const anim of collisionAnims) {
+    const dt = (now - anim.startTime) / 1000;
+    const age = (now - anim.startTime) / FLY_DUR;
+    if (age >= 1) continue;
+    ctx.shadowBlur = 5;
+    for (const p of anim.flyParts) {
+      const px = p.x + p.vx * dt;
+      const py = p.y + p.vy * dt;
+      ctx.globalAlpha = Math.max(0, 1 - age * 1.3);
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      const pad = 2;
+      ctx.fillRect(px * CELL + pad, py * CELL + pad, CELL - pad*2, CELL - pad*2);
+    }
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  // Expire finished animations
+  collisionAnims = collisionAnims.filter(a => (now - a.startTime) < FLY_DUR);
+
+  // Dizzy stars spinning around each dizzy snake's head
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.max(8, Math.floor(CELL * 0.6))}px serif`;
+  for (let i = 0; i < snakes.length; i++) {
+    const sn = snakes[i];
+    if (!sn.dizzy || !sn.body.length) continue;
+    const pn = prev[i] || sn;
+    const seg = sn.body[0], pseg = (pn.body && pn.body[0]) ? pn.body[0] : seg;
+    const hx = (pseg.x + (seg.x - pseg.x) * alpha + 0.5) * CELL;
+    const hy = (pseg.y + (seg.y - pseg.y) * alpha + 0.5) * CELL;
+    const r = CELL * 1.05;
+    const base = (now / 1000) * 5; // 5 rad/s
+    for (let s = 0; s < 3; s++) {
+      const a = base + (s / 3) * Math.PI * 2;
+      ctx.fillText('★', hx + Math.cos(a) * r, hy + Math.sin(a) * r);
     }
   }
 }
@@ -551,7 +624,7 @@ document.getElementById('quit-btn').addEventListener('click', returnToLobby);
 function returnToLobby() {
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
-  gameState = null; prevSnakes = null; sessionId = null; isHost = false; isObs = false; myIdx = -1;
+  gameState = null; prevSnakes = null; collisionAnims = []; sessionId = null; isHost = false; isObs = false; myIdx = -1;
   document.getElementById('name-in').value = myName;
   showScreen('lobby');
   startPoll();

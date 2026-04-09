@@ -315,48 +315,58 @@ function initCanvas(cols, rows) {
 }
 
 // ── Pixel-art monster renderer ────────────────────────────────────────────────
-function drawMonster(px, py, sz, now) {
+// dir controls which way the monster faces: right (default), left, down, up
+function drawMonster(px, py, sz, now, dir) {
   const W = sz * CELL;
   const H = sz * CELL;
+  const cx = px + W / 2, cy = py + H / 2;
+  // Rotate canvas so the monster always faces its travel direction
+  const angle = dir === 'left' ? Math.PI : dir === 'down' ? Math.PI / 2 : dir === 'up' ? -Math.PI / 2 : 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (dir === 'left') ctx.scale(-1, 1); // mirror for left (looks more natural than rotation)
+  else if (angle !== 0) ctx.rotate(angle);
+  // Redraw relative to (−W/2, −H/2) after transform
+  const ox = -W / 2, oy = -H / 2;
   const u = Math.max(1, Math.floor(Math.min(W, H) / 10));
 
   // Body fill
   ctx.fillStyle = '#1e6e30';
-  ctx.fillRect(px, py, W, H);
+  ctx.fillRect(ox, oy, W, H);
 
   // Dark border
   ctx.fillStyle = '#0a2e14';
-  ctx.fillRect(px,       py,       W, u);
-  ctx.fillRect(px,       py+H-u,   W, u);
-  ctx.fillRect(px,       py+u,     u, H-2*u);
-  ctx.fillRect(px+W-u,   py+u,     u, H-2*u);
+  ctx.fillRect(ox,       oy,       W, u);
+  ctx.fillRect(ox,       oy+H-u,   W, u);
+  ctx.fillRect(ox,       oy+u,     u, H-2*u);
+  ctx.fillRect(ox+W-u,   oy+u,     u, H-2*u);
 
   // Top-left highlight
   ctx.fillStyle = '#3dac55';
-  ctx.fillRect(px+u, py+u, u*3, u);
-  ctx.fillRect(px+u, py+u, u,   u*3);
+  ctx.fillRect(ox+u, oy+u, u*3, u);
+  ctx.fillRect(ox+u, oy+u, u,   u*3);
 
-  if (sz < 2) return; // 1×1 too small for detail
+  if (sz < 2) { ctx.restore(); return; } // 1×1 too small for detail
 
-  // Horns
+  // Horns (above the top edge, i.e. behind in direction of travel)
   const hornW = Math.max(u, Math.floor(W * 0.13));
   const hornH = Math.max(u*2, Math.floor(H * 0.25));
-  const horn1X = px + Math.floor(W * 0.22);
-  const horn2X = px + Math.floor(W * 0.65);
+  const horn1X = ox + Math.floor(W * 0.22);
+  const horn2X = ox + Math.floor(W * 0.65);
   ctx.fillStyle = '#8b5000';
-  ctx.fillRect(horn1X, py - hornH, hornW, hornH);
-  ctx.fillRect(horn2X, py - hornH, hornW, hornH);
+  ctx.fillRect(horn1X, oy - hornH, hornW, hornH);
+  ctx.fillRect(horn2X, oy - hornH, hornW, hornH);
   ctx.fillStyle = '#c07000';
-  ctx.fillRect(horn1X, py - hornH, hornW, Math.floor(hornH * 0.4));
-  ctx.fillRect(horn2X, py - hornH, hornW, Math.floor(hornH * 0.4));
+  ctx.fillRect(horn1X, oy - hornH, hornW, Math.floor(hornH * 0.4));
+  ctx.fillRect(horn2X, oy - hornH, hornW, Math.floor(hornH * 0.4));
 
   // Eyes
   const blink = (now % 3200) < 140;
   const eyeW  = Math.max(2, Math.floor(W * 0.17));
   const eyeH  = blink ? Math.max(1, u) : eyeW;
-  const eyeY  = py + Math.floor(H * 0.26);
-  const eye1X = px + Math.floor(W * 0.21);
-  const eye2X = px + Math.floor(W * 0.60);
+  const eyeY  = oy + Math.floor(H * 0.26);
+  const eye1X = ox + Math.floor(W * 0.21);
+  const eye2X = ox + Math.floor(W * 0.60);
   ctx.fillStyle = '#c8ffcc';
   ctx.fillRect(eye1X, eyeY, eyeW, eyeH);
   ctx.fillRect(eye2X, eyeY, eyeW, eyeH);
@@ -370,9 +380,9 @@ function drawMonster(px, py, sz, now) {
   }
 
   // Mouth
-  const mouthX = px + Math.floor(W * 0.18);
+  const mouthX = ox + Math.floor(W * 0.18);
   const mouthW = Math.floor(W * 0.64);
-  const mouthY = py + Math.floor(H * 0.62);
+  const mouthY = oy + Math.floor(H * 0.62);
   const mouthH = Math.max(u*2, Math.floor(H * 0.20));
   ctx.fillStyle = '#1a0000';
   ctx.fillRect(mouthX, mouthY, mouthW, mouthH);
@@ -394,9 +404,10 @@ function drawMonster(px, py, sz, now) {
       [0.38,0.38],[0.58,0.33],[0.52,0.50],[0.36,0.52],
       [0.68,0.50],[0.44,0.65],[0.62,0.62],[0.74,0.38],
     ]) {
-      ctx.fillRect(px + Math.floor(W*dx), py + Math.floor(H*dy), s2, s2);
+      ctx.fillRect(ox + Math.floor(W*dx), oy + Math.floor(H*dy), s2, s2);
     }
   }
+  ctx.restore();
 }
 
 function renderGame() {
@@ -494,7 +505,7 @@ function renderGame() {
 
   // Monster — pixel art, smoothly interpolated, grows each appearance
   if (gameState.elephant) {
-    const { lx, ly, size } = gameState.elephant;
+    const { lx, ly, size, dir } = gameState.elephant;
     let erx = lx, ery = ly;
     if (prevElephant && elephantMoveTime > 0) {
       const et = Math.min(1, (now - elephantMoveTime) / (TICK_MS * 2));
@@ -504,7 +515,7 @@ function renderGame() {
     // Faint danger glow matching exact footprint
     ctx.fillStyle = 'rgba(30,180,60,0.07)';
     ctx.fillRect(erx * CELL, ery * CELL, size * CELL, size * CELL);
-    drawMonster(erx * CELL, ery * CELL, size, now);
+    drawMonster(erx * CELL, ery * CELL, size, now, dir || 'right');
   }
 
   // Snakes — interpolated + bounce offset on collision

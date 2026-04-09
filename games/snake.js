@@ -360,50 +360,81 @@ function moveCleaner(sess) {
 
 // ── Elephant (pixel monster) ──────────────────────────────────────────────────
 // Anchor = top-left cell (lx, ly); occupies lx..lx+size-1, ly..ly+size-1
+// dir: 'right'|'left'|'down'|'up' — the direction it walks across
 function spawnElephant(sess) {
   if (!sess.started || sess.gameOver || sess.elephant) return;
   sess.elephantCount++;
   const size = Math.min(5, sess.elephantCount);
-  const ly = Math.floor(Math.random() * (ROWS - size + 1));
-  sess.elephant = { lx: -size, ly, size };
 
-  // Pre-pick which columns (0..COLS-1) will receive a poop as monster passes
-  const target = 10 + Math.floor(Math.random() * 11); // 10–20
-  const allCols = Array.from({ length: COLS }, (_, i) => i);
-  for (let i = allCols.length - 1; i > 0; i--) {
+  const dir = ['right', 'left', 'down', 'up'][Math.floor(Math.random() * 4)];
+  let lx, ly;
+  if      (dir === 'right') { lx = -size;  ly = Math.floor(Math.random() * (ROWS - size + 1)); }
+  else if (dir === 'left')  { lx = COLS;   ly = Math.floor(Math.random() * (ROWS - size + 1)); }
+  else if (dir === 'down')  { lx = Math.floor(Math.random() * (COLS - size + 1)); ly = -size;  }
+  else                      { lx = Math.floor(Math.random() * (COLS - size + 1)); ly = ROWS;   }
+
+  sess.elephant = { lx, ly, size, dir };
+
+  // Pre-pick which positions along the travel axis will get a poop
+  const target   = 10 + Math.floor(Math.random() * 11); // 10–20
+  const axisLen  = (dir === 'right' || dir === 'left') ? COLS : ROWS;
+  const all      = Array.from({ length: axisLen }, (_, i) => i);
+  for (let i = all.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [allCols[i], allCols[j]] = [allCols[j], allCols[i]];
+    [all[i], all[j]] = [all[j], all[i]];
   }
-  sess.elephantPoopCols = new Set(allCols.slice(0, target));
+  sess.elephantPoopCols = new Set(all.slice(0, target));
 }
 
 function moveElephant(sess) {
   if (!sess.elephant) return;
-  const { lx, ly, size } = sess.elephant;
+  const { lx, ly, size, dir } = sess.elephant;
 
-  // Drop a poop in the column just vacated, if that column was pre-selected
-  if (lx >= 0 && lx < COLS && sess.elephantPoopCols && sess.elephantPoopCols.has(lx)) {
+  // Identify the trailing edge coordinate (the row/col being vacated this step)
+  let trailCoord, trailInBounds;
+  if      (dir === 'right') { trailCoord = lx;           trailInBounds = lx >= 0 && lx < COLS; }
+  else if (dir === 'left')  { trailCoord = lx + size - 1; trailInBounds = lx + size - 1 >= 0 && lx + size - 1 < COLS; }
+  else if (dir === 'down')  { trailCoord = ly;           trailInBounds = ly >= 0 && ly < ROWS; }
+  else                      { trailCoord = ly + size - 1; trailInBounds = ly + size - 1 >= 0 && ly + size - 1 < ROWS; }
+
+  // Drop poop on the trailing edge if this position was pre-selected
+  if (trailInBounds && sess.elephantPoopCols && sess.elephantPoopCols.has(trailCoord)) {
     const poopSet  = new Set(sess.poops.map(p => `${p.x},${p.y}`));
     const foodSet  = new Set(sess.food.map(f => `${f.x},${f.y}`));
     const snakeOcc = new Set();
     for (const p of sess.players) if (p.alive) for (const s of p.body) snakeOcc.add(`${s.x},${s.y}`);
-    const row = ly + Math.floor(Math.random() * size);
-    const pk  = `${lx},${row}`;
+    // Poop position: random perpendicular offset within the monster's width
+    const px = (dir === 'right' || dir === 'left') ? trailCoord : lx + Math.floor(Math.random() * size);
+    const py = (dir === 'down'  || dir === 'up')   ? trailCoord : ly + Math.floor(Math.random() * size);
+    const pk = `${px},${py}`;
     if (!poopSet.has(pk) && !foodSet.has(pk) && !snakeOcc.has(pk)) {
-      sess.poops.push({ x: lx, y: row });
+      sess.poops.push({ x: px, y: py });
       scheduleCleaner(sess);
     }
   }
 
-  // Move right; also wander up/down
-  const newLX = lx + 1;
-  if (newLX >= COLS) { sess.elephant = null; sess.elephantPoopCols = null; return; }
+  // Advance one step in travel direction
+  let newLX = lx, newLY = ly;
+  if      (dir === 'right') newLX++;
+  else if (dir === 'left')  newLX--;
+  else if (dir === 'down')  newLY++;
+  else                      newLY--;
 
-  const dy = Math.random() < 0.25 ? -1 : Math.random() < 0.33 ? 1 : 0;
-  const newLY = Math.max(0, Math.min(ROWS - size, ly + dy));
-  sess.elephant = { lx: newLX, ly: newLY, size };
+  // Exit when fully off the far edge
+  const exited = dir === 'right' ? newLX >= COLS
+               : dir === 'left'  ? newLX + size <= 0
+               : dir === 'down'  ? newLY >= ROWS
+               :                   newLY + size <= 0;
+  if (exited) { sess.elephant = null; sess.elephantPoopCols = null; return; }
 
-  // Collide with snakes entering the new footprint
+  // Wander perpendicular to travel direction
+  const perp = Math.random() < 0.25 ? -1 : Math.random() < 0.33 ? 1 : 0;
+  if (dir === 'right' || dir === 'left') newLY = Math.max(0, Math.min(ROWS - size, newLY + perp));
+  else                                   newLX = Math.max(0, Math.min(COLS - size, newLX + perp));
+
+  sess.elephant = { lx: newLX, ly: newLY, size, dir };
+
+  // Collide with snakes in new footprint
   const hit = new Set();
   for (const p of sess.players) {
     if (!p.alive) continue;

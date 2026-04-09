@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Snake · Game Hub</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{height:100%;overflow:hidden}
+body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:hidden;overscroll-behavior:none;touch-action:pan-x pan-y}
+.screen{display:none;flex-direction:column;align-items:center;width:100%;padding:10px 16px 16px;gap:10px}
+.screen.active{display:flex}
+/* ── Title ── */
+.page-title{font-size:1.6rem;letter-spacing:5px;color:#44ee88;text-transform:uppercase;text-shadow:0 0 20px rgba(68,238,136,.4)}
+.page-sub{font-size:.75rem;color:#446644;letter-spacing:3px;text-transform:uppercase}
+/* ── Lobby box ── */
+.lobby-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:10px;padding:16px 20px;width:min(100%,420px);display:flex;flex-direction:column;gap:10px}
+.lb-label{font-size:.82rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:4px}
+.lb-input{width:100%;padding:13px 14px;background:#0a140a;border:1px solid #2a4a2a;border-radius:6px;color:#e0d5c1;font-size:1rem;font-family:inherit;outline:none}
+.lb-input:focus{border-color:#44ee88}
+.lb-err{min-height:18px;font-size:.88rem;color:#ee4444;text-align:center}
+/* ── Buttons ── */
+.btn-green{width:100%;padding:14px;background:#44ee88;color:#0a1a0a;border:none;border-radius:8px;font-size:1rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
+.btn-green:hover{background:#66ffaa}
+.btn-ghost{width:100%;padding:12px;background:transparent;color:#446644;border:1px solid #2a4a2a;border-radius:8px;font-size:.92rem;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s}
+.btn-ghost:hover{border-color:#44ee88;color:#44ee88}
+.back-link{font-size:.82rem;color:#334433;letter-spacing:2px;text-decoration:none;text-transform:uppercase;transition:color .2s}
+.back-link:hover{color:#44ee88}
+/* ── Std sessions ── */
+.std-sess-section{width:100%}
+.std-sess-hdr{font-size:.72rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#0a1a0a;color:#446644;border:1px solid #2a4a2a;border-radius:10px;padding:1px 7px;font-size:.68rem}
+.std-sess-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px;padding:9px 12px}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.85rem;color:#e0d5c1}
+.std-sess-meta{font-size:.72rem;color:#446644;margin-top:2px}
+.std-no-sess{padding:14px;text-align:center;font-size:.8rem;color:#334433;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px}
+.std-btn-join{padding:5px 12px;background:#0f2a0f;border:1px solid #3a7a3a;border-radius:4px;color:#88cc88;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-join:hover{background:#1a3a1a}
+.std-btn-obs{padding:5px 12px;background:#0a0a1a;border:1px solid #3a3a6a;border-radius:4px;color:#8080c0;font-size:.78rem;cursor:pointer;font-family:inherit}
+.std-btn-obs:hover{background:#1a1a2a}
+/* ── Waiting room ── */
+.wait-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:10px;padding:28px 36px;width:min(100%,420px);text-align:center}
+.wait-title{font-size:.72rem;letter-spacing:2px;color:#446644;text-transform:uppercase;margin-bottom:6px}
+.sess-id-val{font-size:2rem;letter-spacing:8px;color:#44ee88;cursor:pointer;user-select:all;margin-bottom:4px;display:block}
+.sess-id-val:hover{text-decoration:underline}
+.copy-hint{font-size:.7rem;color:#334433;letter-spacing:1px;margin-bottom:18px}
+.wait-players{margin:14px 0;display:flex;flex-direction:column;gap:8px}
+.wait-player{display:flex;align-items:center;gap:10px;background:#0a140a;border:1px solid #2a4a2a;border-radius:4px;padding:9px 14px;font-size:.9rem}
+.wait-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.wait-crown{color:#d4af37;font-size:.8rem}
+.wait-msg{font-size:.82rem;color:#446644;margin-top:8px}
+/* ── Game screen ── */
+#screen-game{padding:0;gap:0;width:100%;height:100vh;height:100dvh;overflow:hidden;background:#060e06}
+#score-bar{flex-shrink:0;background:#0a140a;border-bottom:1px solid #1a3a1a;display:flex;align-items:center;gap:6px;padding:8px 14px;flex-wrap:wrap;min-height:52px}
+.score-chip{display:flex;align-items:center;gap:8px;background:#0d1a0d;border-radius:20px;padding:6px 14px;border:1px solid #1a3a1a;font-size:1rem}
+.sc-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.sc-name{color:#c0d0c0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-val{color:#44ee88;font-weight:bold;min-width:24px;text-align:right}
+.score-chip.dead{opacity:.4}
+#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative;background:#060e06}
+#canvas{display:block;image-rendering:pixelated}
+/* ── Mobile controls ── */
+#dpad{flex-shrink:0;display:grid;grid-template-areas:". up ." "left . right" ". down .";gap:6px;padding:10px 0 max(12px,env(safe-area-inset-bottom));background:#0a140a;border-top:2px solid #1a3a1a;justify-content:center}
+.dpad-btn{width:76px;height:68px;background:#162816;border:2px solid #2a4a2a;border-radius:12px;font-size:1.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#44ee88;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .08s}
+.dpad-btn:active,.dpad-btn.pressed{background:#2a5a2a;border-color:#44ee88}
+#dpad-up{grid-area:up}#dpad-left{grid-area:left}#dpad-right{grid-area:right}#dpad-down{grid-area:down}
+@media(min-width:600px){#dpad{display:none}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+/* ── Game over ── */
+#over-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:12px;padding:36px 44px;text-align:center;max-width:360px;width:90vw}
+#over-title{font-size:1.4rem;letter-spacing:4px;color:#44ee88;margin-bottom:6px}
+#over-winner{font-size:.9rem;color:#c0d0c0;margin-bottom:20px}
+#over-scores{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.over-row{display:flex;align-items:center;gap:10px;background:#0a140a;border-radius:4px;padding:9px 14px}
+.over-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+.over-name{flex:1;text-align:left;font-size:.9rem;color:#c0d0c0}
+.over-score{font-size:.9rem;color:#44ee88;font-weight:bold}
+.over-row.first .over-name{color:#d4af37}
+</style>
+</head>
+<body>
+
+<!-- ── LOBBY ── -->
+<div id="screen-lobby" class="screen active">
+  <div class="page-title">Snake</div>
+  <div class="page-sub">Multiplayer · 2–4 players</div>
+  <div class="lobby-box">
+    <div>
+      <div class="lb-label">Your Name</div>
+      <input id="name-in" class="lb-input" type="text" maxlength="24" placeholder="Enter your name" autocomplete="off">
+    </div>
+    <button class="btn-green" id="host-btn">Host New Game</button>
+    <div class="lb-err" id="lb-err"></div>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="sess-badge">0</span></div>
+      <div class="std-sess-list" id="sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+  </div>
+  <a href="/" class="back-link">&#8592; Back to Hub</a>
+</div>
+
+<!-- ── WAITING ── -->
+<div id="screen-waiting" class="screen">
+  <div class="page-title">Snake</div>
+  <div class="wait-box">
+    <div class="wait-title">Session ID</div>
+    <span class="sess-id-val" id="wait-sid">—</span>
+    <div class="copy-hint">Tap to copy · Share with friends</div>
+    <div class="wait-players" id="wait-players"></div>
+    <div class="wait-msg" id="wait-msg">Waiting for players…</div>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn-green" id="start-btn" style="display:none">▶ Start Game</button>
+      <button class="btn-ghost" id="leave-btn">Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GAME ── -->
+<div id="screen-game" class="screen">
+  <div id="score-bar"></div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="dpad">
+    <button class="dpad-btn" id="dpad-up">▲</button>
+    <button class="dpad-btn" id="dpad-left">◀</button>
+    <button class="dpad-btn" id="dpad-right">▶</button>
+    <button class="dpad-btn" id="dpad-down">▼</button>
+  </div>
+</div>
+
+<!-- ── GAME OVER ── -->
+<div id="screen-over" class="screen">
+  <div id="over-box">
+    <div id="over-title">Game Over</div>
+    <div id="over-winner"></div>
+    <div id="over-scores"></div>
+    <button class="btn-green" id="restart-btn" style="display:none">↩ Play Again</button>
+    <button class="btn-ghost" id="quit-btn" style="margin-top:8px">Back to Lobby</button>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let myName = localStorage.getItem('phub_name') || '';
+let sessionId = null;
+let isHost = false;
+let isObs = false;
+let gameState = null;  // { cols, rows, players, snakes, food, scores }
+let myIdx = -1;
+let myDir = 'right';
+let TICK_MS = 200;
+let lastTickTime = 0;
+let prevSnakes = null;
+let rafId = null;
+let collisionAnims = []; // { snakeIdx, bounceDir{x,y}, startTime, flyParts[{x,y,vx,vy,color}] }
+const BOUNCE_DUR = 280;  // ms
+const FLY_DUR    = 650;  // ms
+let prevCleaner = null;
+let cleanerMoveTime = 0;
+let prevElephant = null;
+let elephantMoveTime = 0;
+
+// ── Screens ───────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect(onOpen) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/snake`);
+  ws.onopen = () => onOpen && onOpen();
+  ws.onclose = () => { if (document.getElementById('screen-game').classList.contains('active')) returnToLobby(); };
+  ws.onerror = () => {};
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch(err) {} };
+}
+
+function wsSend(o) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handle(msg) {
+  switch (msg.type) {
+
+    case 'snake_waiting':
+      sessionId = msg.sessionId;
+      isHost = msg.players.length === 1;
+      renderWaiting(msg.players);
+      showScreen('waiting');
+      break;
+
+    case 'snake_lobby':
+      isHost = msg.players.length > 0 && msg.players[0].name === myName;
+      renderWaiting(msg.players);
+      break;
+
+    case 'snake_observing':
+      sessionId = msg.sessionId;
+      isObs = true;
+      break;
+
+    case 'snake_start':
+      gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
+      prevCleaner = null; cleanerMoveTime = 0;
+      prevElephant = null; elephantMoveTime = 0;
+      myIdx = msg.players.findIndex(p => p.name === myName);
+      if (myIdx >= 0) myDir = 'right';
+      prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
+      lastTickTime = Date.now();
+      initCanvas(msg.cols, msg.rows);
+      renderScoreBar();
+      showScreen('game');
+      if (!rafId) rafId = requestAnimationFrame(renderLoop);
+      break;
+
+    case 'snake_tick': {
+      if (!gameState) break;
+      prevSnakes = gameState.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
+      gameState.snakes = msg.snakes;
+      gameState.food = msg.food;
+      gameState.poops = msg.poops || gameState.poops;
+      // Track cleaner movement for smooth interpolation
+      if (msg.cleaner && gameState.cleaner &&
+          (msg.cleaner.x !== gameState.cleaner.x || msg.cleaner.y !== gameState.cleaner.y)) {
+        prevCleaner = { ...gameState.cleaner };
+        cleanerMoveTime = Date.now();
+      }
+      gameState.cleaner = msg.cleaner !== undefined ? msg.cleaner : gameState.cleaner;
+      // Track elephant movement for smooth interpolation
+      if (msg.elephant && gameState.elephant &&
+          (msg.elephant.lx !== gameState.elephant.lx || msg.elephant.ly !== gameState.elephant.ly)) {
+        prevElephant = { ...gameState.elephant };
+        elephantMoveTime = Date.now();
+      }
+      if (!gameState.elephant && msg.elephant) elephantMoveTime = Date.now(); // first appearance
+      gameState.elephant = msg.elephant !== undefined ? msg.elephant : gameState.elephant;
+      lastTickTime = Date.now();
+      // Detect newly-dizzy snakes → spawn collision animation
+      for (let i = 0; i < gameState.snakes.length; i++) {
+        const prev = prevSnakes[i], curr = gameState.snakes[i];
+        if (!prev || !curr || curr.dizzy === 0 || prev.dizzy > 0) continue;
+        // Direction the head was facing (head minus neck)
+        const dir = prev.body.length >= 2
+          ? { x: prev.body[0].x - prev.body[1].x, y: prev.body[0].y - prev.body[1].y }
+          : { x: 1, y: 0 };
+        const color = (gameState.players[i] || {}).color || '#888';
+        // Segments that were removed (up to 5 tail blocks)
+        const removed = prev.body.slice(curr.body.length).slice(-5);
+        const baseAngle = Math.atan2(-dir.y, -dir.x); // away from travel direction
+        const flyParts = removed.map(seg => {
+          const a = baseAngle + (Math.random() - 0.5) * Math.PI * 1.4;
+          const spd = 4 + Math.random() * 6;
+          return { x: seg.x + 0.5, y: seg.y + 0.5, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, color };
+        });
+        collisionAnims.push({ snakeIdx: i, bounceDir: { x: -dir.x, y: -dir.y }, startTime: lastTickTime, flyParts });
+      }
+      renderScoreBar();
+      break;
+    }
+
+    case 'snake_over':
+      if (gameState) { gameState.snakes = gameState.snakes; }
+      renderScoreBar();
+      showGameOver(msg);
+      break;
+
+    case 'snake_err':
+      document.getElementById('lb-err').textContent = msg.message;
+      break;
+
+  }
+}
+
+// ── Waiting room ──────────────────────────────────────────────────────────────
+function renderWaiting(players) {
+  const el = document.getElementById('wait-players');
+  el.innerHTML = players.map((p, i) => `
+    <div class="wait-player">
+      <span class="wait-dot" style="background:${p.color}"></span>
+      ${i === 0 ? '<span class="wait-crown">★</span>' : ''}
+      <span>${esc(p.name)}${p.name === myName ? ' (you)' : ''}</span>
+    </div>`).join('');
+
+  const isH = players.length > 0 && players[0].name === myName;
+  document.getElementById('start-btn').style.display = isH ? 'block' : 'none';
+  document.getElementById('wait-msg').textContent =
+    players.length < 2 ? 'Need at least 2 players to start…' : isH ? 'Ready to start!' : 'Waiting for host to start…';
+}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let CELL = 16;
+
+function initCanvas(cols, rows) {
+  const isMobile = window.innerWidth < 600;
+  const scoreH = document.getElementById('score-bar').offsetHeight || 52;
+  const dpadH  = isMobile ? (document.getElementById('dpad').offsetHeight || 240) : 0;
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight - scoreH - dpadH - 4;
+  CELL = Math.floor(Math.min(maxW / cols, maxH / rows));
+  if (CELL < 8) CELL = 8;
+  canvas.width  = cols * CELL;
+  canvas.height = rows * CELL;
+}
+
+// ── Pixel-art monster renderer ────────────────────────────────────────────────
+function drawMonster(px, py, sz, now) {
+  const W = sz * CELL;
+  const H = sz * CELL;
+  const u = Math.max(1, Math.floor(Math.min(W, H) / 10));
+
+  // Body fill
+  ctx.fillStyle = '#1e6e30';
+  ctx.fillRect(px, py, W, H);
+
+  // Dark border
+  ctx.fillStyle = '#0a2e14';
+  ctx.fillRect(px,       py,       W, u);
+  ctx.fillRect(px,       py+H-u,   W, u);
+  ctx.fillRect(px,       py+u,     u, H-2*u);
+  ctx.fillRect(px+W-u,   py+u,     u, H-2*u);
+
+  // Top-left highlight
+  ctx.fillStyle = '#3dac55';
+  ctx.fillRect(px+u, py+u, u*3, u);
+  ctx.fillRect(px+u, py+u, u,   u*3);
+
+  if (sz < 2) return; // 1×1 too small for detail
+
+  // Horns
+  const hornW = Math.max(u, Math.floor(W * 0.13));
+  const hornH = Math.max(u*2, Math.floor(H * 0.25));
+  const horn1X = px + Math.floor(W * 0.22);
+  const horn2X = px + Math.floor(W * 0.65);
+  ctx.fillStyle = '#8b5000';
+  ctx.fillRect(horn1X, py - hornH, hornW, hornH);
+  ctx.fillRect(horn2X, py - hornH, hornW, hornH);
+  ctx.fillStyle = '#c07000';
+  ctx.fillRect(horn1X, py - hornH, hornW, Math.floor(hornH * 0.4));
+  ctx.fillRect(horn2X, py - hornH, hornW, Math.floor(hornH * 0.4));
+
+  // Eyes
+  const blink = (now % 3200) < 140;
+  const eyeW  = Math.max(2, Math.floor(W * 0.17));
+  const eyeH  = blink ? Math.max(1, u) : eyeW;
+  const eyeY  = py + Math.floor(H * 0.26);
+  const eye1X = px + Math.floor(W * 0.21);
+  const eye2X = px + Math.floor(W * 0.60);
+  ctx.fillStyle = '#c8ffcc';
+  ctx.fillRect(eye1X, eyeY, eyeW, eyeH);
+  ctx.fillRect(eye2X, eyeY, eyeW, eyeH);
+  if (!blink && eyeW >= 4) {
+    const look = Math.round(Math.sin(now / 1400) * Math.floor(eyeW * 0.22));
+    const pw = Math.max(1, Math.floor(eyeW * 0.44));
+    const ph = Math.max(1, Math.floor(eyeH * 0.60));
+    ctx.fillStyle = '#111';
+    ctx.fillRect(eye1X + Math.floor(eyeW*0.25) + look, eyeY + Math.floor(eyeH*0.2), pw, ph);
+    ctx.fillRect(eye2X + Math.floor(eyeW*0.25) + look, eyeY + Math.floor(eyeH*0.2), pw, ph);
+  }
+
+  // Mouth
+  const mouthX = px + Math.floor(W * 0.18);
+  const mouthW = Math.floor(W * 0.64);
+  const mouthY = py + Math.floor(H * 0.62);
+  const mouthH = Math.max(u*2, Math.floor(H * 0.20));
+  ctx.fillStyle = '#1a0000';
+  ctx.fillRect(mouthX, mouthY, mouthW, mouthH);
+  // Teeth
+  const nTeeth  = Math.min(5, Math.max(2, sz + 1));
+  const toothW  = Math.max(u, Math.floor(mouthW / (nTeeth * 2)));
+  const toothH  = Math.max(u, Math.floor(mouthH * 0.5));
+  ctx.fillStyle = '#e8e8cc';
+  for (let t = 0; t < nTeeth; t++) {
+    const tx = mouthX + Math.floor(mouthW * (t + 0.25) / nTeeth);
+    ctx.fillRect(tx, mouthY, toothW, toothH);
+  }
+
+  // Scales / dark spots (size ≥ 4)
+  if (sz >= 4) {
+    ctx.fillStyle = 'rgba(0,50,0,0.38)';
+    const s2 = Math.max(u, Math.floor(W * 0.075));
+    for (const [dx, dy] of [
+      [0.38,0.38],[0.58,0.33],[0.52,0.50],[0.36,0.52],
+      [0.68,0.50],[0.44,0.65],[0.62,0.62],[0.74,0.38],
+    ]) {
+      ctx.fillRect(px + Math.floor(W*dx), py + Math.floor(H*dy), s2, s2);
+    }
+  }
+}
+
+function renderGame() {
+  if (!gameState) return;
+  const now = Date.now();
+  const { cols, rows, snakes, food, players } = gameState;
+  ctx.fillStyle = '#060e06';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Boundary line
+  ctx.strokeStyle = '#2a6a2a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
+  // Grid dots
+  ctx.fillStyle = '#0d180d';
+  for (let x = 0; x < cols; x++) for (let y = 0; y < rows; y++) {
+    ctx.fillRect(x * CELL + CELL/2 - 1, y * CELL + CELL/2 - 1, 2, 2);
+  }
+
+  // Poops — dark brown squares with a slightly rounded look
+  ctx.shadowBlur = 0;
+  for (const p of (gameState.poops || [])) {
+    const pad = Math.max(1, Math.floor(CELL * 0.15));
+    const sz = CELL - pad * 2;
+    ctx.fillStyle = '#5a3010';
+    ctx.fillRect(p.x * CELL + pad, p.y * CELL + pad, sz, sz);
+    // Lighter center highlight
+    ctx.fillStyle = '#7a4820';
+    const inner = Math.max(1, Math.floor(sz * 0.35));
+    ctx.fillRect(p.x * CELL + pad + Math.floor(sz*0.2), p.y * CELL + pad + Math.floor(sz*0.2), inner, inner);
+  }
+
+  // Food
+  for (const f of food) {
+    const cx = f.x * CELL + CELL/2;
+    const cy = f.y * CELL + CELL/2;
+    const r = CELL * 0.35;
+    ctx.fillStyle = '#ff4444';
+    ctx.shadowColor = '#ff4444';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Cleaner — smoothly interpolated (moves every 2 ticks = 400ms)
+  if (gameState.cleaner) {
+    const { leaving } = gameState.cleaner;
+    let crx = gameState.cleaner.x, cry = gameState.cleaner.y;
+    if (prevCleaner && cleanerMoveTime > 0) {
+      const ct = Math.min(1, (now - cleanerMoveTime) / (TICK_MS * 2));
+      crx = prevCleaner.x + (gameState.cleaner.x - prevCleaner.x) * ct;
+      cry = prevCleaner.y + (gameState.cleaner.y - prevCleaner.y) * ct;
+    }
+    ctx.globalAlpha = leaving ? 0.55 : 1;
+    ctx.fillStyle = leaving ? '#fff8cc' : '#f0f8ff';
+    ctx.shadowColor = leaving ? '#ffdd44' : '#88ddff';
+    ctx.shadowBlur = 16;
+    ctx.fillRect(crx * CELL + 1, cry * CELL + 1, CELL - 2, CELL - 2);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = leaving ? '#886600' : '#1166aa';
+    ctx.lineWidth = Math.max(1, CELL * 0.15);
+    ctx.lineCap = 'round';
+    const ccx = crx * CELL + CELL/2, ccy = cry * CELL + CELL/2, cr = CELL * 0.26;
+    ctx.beginPath(); ctx.moveTo(ccx - cr, ccy); ctx.lineTo(ccx + cr, ccy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ccx, ccy - cr); ctx.lineTo(ccx, ccy + cr); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Monster — pixel art, smoothly interpolated, grows each appearance
+  if (gameState.elephant) {
+    const { lx, ly, size } = gameState.elephant;
+    let erx = lx, ery = ly;
+    if (prevElephant && elephantMoveTime > 0) {
+      const et = Math.min(1, (now - elephantMoveTime) / (TICK_MS * 2));
+      erx = prevElephant.lx + (lx - prevElephant.lx) * et;
+      ery = prevElephant.ly + (ly - prevElephant.ly) * et;
+    }
+    // Faint danger glow matching exact footprint
+    ctx.fillStyle = 'rgba(30,180,60,0.07)';
+    ctx.fillRect(erx * CELL, ery * CELL, size * CELL, size * CELL);
+    drawMonster(erx * CELL, ery * CELL, size, now);
+  }
+
+  // Snakes — interpolated + bounce offset on collision
+  const alpha = Math.min(1, (now - lastTickTime) / TICK_MS);
+  const prev = prevSnakes || snakes;
+  for (let i = 0; i < snakes.length; i++) {
+    const sn = snakes[i];
+    const pn = prev[i] || sn;
+    if (!sn.body.length) continue;
+    const color = players[i] ? players[i].color : '#888';
+    const alive = sn.alive;
+    const dizzy = sn.dizzy > 0;
+
+    // Bounce offset: spring backward on collision then return to 0
+    let bx = 0, by = 0;
+    const anim = collisionAnims.find(a => a.snakeIdx === i);
+    if (anim) {
+      const t = (now - anim.startTime) / BOUNCE_DUR;
+      if (t < 1) {
+        const bounce = Math.sin(t * Math.PI) * 0.75; // peak at t=0.5
+        bx = anim.bounceDir.x * bounce;
+        by = anim.bounceDir.y * bounce;
+      }
+    }
+
+    // Dizzy snakes flash rapidly
+    ctx.globalAlpha = (dizzy && Math.sin(now / 55) < 0) ? 0.28 : 1.0;
+    ctx.fillStyle = alive ? color : color + '44';
+    ctx.shadowColor = alive ? color : 'transparent';
+    ctx.shadowBlur = alive ? 6 : 0;
+
+    for (let j = 0; j < sn.body.length; j++) {
+      const seg = sn.body[j];
+      const pseg = (pn.body && pn.body[j]) ? pn.body[j] : seg;
+      const rx = pseg.x + (seg.x - pseg.x) * alpha + bx;
+      const ry = pseg.y + (seg.y - pseg.y) * alpha + by;
+      const pad = j === 0 ? 1 : 2;
+      ctx.fillRect(rx * CELL + pad, ry * CELL + pad, CELL - pad*2, CELL - pad*2);
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    // Head eyes
+    if (alive && sn.body.length > 0) {
+      const seg = sn.body[0];
+      const pseg = (pn.body && pn.body[0]) ? pn.body[0] : seg;
+      const hx = pseg.x + (seg.x - pseg.x) * alpha + bx;
+      const hy = pseg.y + (seg.y - pseg.y) * alpha + by;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(hx * CELL + CELL * 0.3,              hy * CELL + CELL * 0.3, 2, 2);
+      ctx.fillRect(hx * CELL + CELL * 0.3 + CELL * 0.35, hy * CELL + CELL * 0.3, 2, 2);
+    }
+  }
+
+  // Fly-out particles (removed tail blocks flying off screen)
+  for (const anim of collisionAnims) {
+    const dt = (now - anim.startTime) / 1000;
+    const age = (now - anim.startTime) / FLY_DUR;
+    if (age >= 1) continue;
+    ctx.shadowBlur = 5;
+    for (const p of anim.flyParts) {
+      const px = p.x + p.vx * dt;
+      const py = p.y + p.vy * dt;
+      ctx.globalAlpha = Math.max(0, 1 - age * 1.3);
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      const pad = 2;
+      ctx.fillRect(px * CELL + pad, py * CELL + pad, CELL - pad*2, CELL - pad*2);
+    }
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  // Expire finished animations
+  collisionAnims = collisionAnims.filter(a => (now - a.startTime) < FLY_DUR);
+
+  // Dizzy stars spinning around each dizzy snake's head
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.max(8, Math.floor(CELL * 0.6))}px serif`;
+  for (let i = 0; i < snakes.length; i++) {
+    const sn = snakes[i];
+    if (!sn.dizzy || !sn.body.length) continue;
+    const pn = prev[i] || sn;
+    const seg = sn.body[0], pseg = (pn.body && pn.body[0]) ? pn.body[0] : seg;
+    const hx = (pseg.x + (seg.x - pseg.x) * alpha + 0.5) * CELL;
+    const hy = (pseg.y + (seg.y - pseg.y) * alpha + 0.5) * CELL;
+    const r = CELL * 1.05;
+    const base = (now / 1000) * 5; // 5 rad/s
+    for (let s = 0; s < 3; s++) {
+      const a = base + (s / 3) * Math.PI * 2;
+      ctx.fillText('★', hx + Math.cos(a) * r, hy + Math.sin(a) * r);
+    }
+  }
+
+  // Countdown overlay — only shown to the local frozen player
+  if (!isObs && myIdx >= 0 && snakes[myIdx] && snakes[myIdx].frozen > 0) {
+    const frozen = snakes[myIdx].frozen;
+    const secsLeft = Math.ceil(frozen * TICK_MS / 1000);
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+
+    // Dim the whole canvas
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Pulsing scale: number grows in slightly at the start of each second
+    const pulse = 1 + Math.sin(now / 180) * 0.06;
+    ctx.save();
+    ctx.translate(cx, cy - CELL * 1.5);
+    ctx.scale(pulse, pulse);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.floor(CELL * 3.2)}px sans-serif`;
+    ctx.fillStyle = '#ffee44';
+    ctx.shadowColor = '#ff9900';
+    ctx.shadowBlur = 28;
+    ctx.fillText(secsLeft, 0, 0);
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${Math.max(10, Math.floor(CELL * 0.75))}px sans-serif`;
+    ctx.fillStyle = '#aaccaa';
+    ctx.fillText('tap a direction to continue', cx, cy + CELL * 1.2);
+  }
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+function renderLoop() {
+  if (gameState && document.getElementById('screen-game').classList.contains('active')) {
+    renderGame();
+    rafId = requestAnimationFrame(renderLoop);
+  } else {
+    rafId = null;
+  }
+}
+
+// ── Score bar ─────────────────────────────────────────────────────────────────
+function renderScoreBar() {
+  if (!gameState) return;
+  const { players, snakes } = gameState;
+  document.getElementById('score-bar').innerHTML = players.map((p, i) => {
+    const sn = snakes[i];
+    const alive = sn ? sn.alive : false;
+    const len = sn ? sn.body.length : 0;
+    return `<div class="score-chip${alive ? '' : ' dead'}">
+      <span class="sc-dot" style="background:${p.color}"></span>
+      <span class="sc-name">${esc(p.name)}</span>
+      <span class="sc-val">${len}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Game over ─────────────────────────────────────────────────────────────────
+function showGameOver(msg) {
+  const sorted = [...msg.scores].sort((a, b) => b.score - a.score);
+  document.getElementById('over-title').textContent = msg.winner ? '🏆 Winner!' : 'Game Over';
+  document.getElementById('over-winner').textContent = msg.winner ? `${msg.winner} wins!` : 'It\'s a tie!';
+  document.getElementById('over-scores').innerHTML = sorted.map((s, i) => `
+    <div class="over-row${i === 0 ? ' first' : ''}">
+      <span class="over-swatch" style="background:${s.color}"></span>
+      <span class="over-name">${esc(s.name)}</span>
+      <span class="over-score">${s.score} food</span>
+    </div>`).join('');
+  document.getElementById('restart-btn').style.display = isHost ? 'block' : 'none';
+  showScreen('over');
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const OPP = { up:'down', down:'up', left:'right', right:'left' };
+function sendDir(dir) {
+  if (isObs) return;
+  if (gameState && myIdx >= 0 && gameState.snakes[myIdx] && !gameState.snakes[myIdx].alive) return;
+  if (OPP[dir] === myDir) return;
+  myDir = dir;
+  wsSend({ type: 'direction', dir });
+}
+
+document.addEventListener('keydown', e => {
+  const map = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+                w:'up', s:'down', a:'left', d:'right',
+                W:'up', S:'down', A:'left', D:'right' };
+  if (map[e.key]) { e.preventDefault(); sendDir(map[e.key]); }
+});
+
+// D-pad — use touchstart for instant response on iOS (no 300ms delay)
+function bindDpad(id, dir) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', e => { e.preventDefault(); sendDir(dir); }, { passive: false });
+  el.addEventListener('click', () => sendDir(dir));
+}
+bindDpad('dpad-up', 'up');
+bindDpad('dpad-down', 'down');
+bindDpad('dpad-left', 'left');
+bindDpad('dpad-right', 'right');
+
+// Full-screen touch: block scroll everywhere except scrollable UI containers,
+// and detect swipes on the game screen.
+let touchStart = null;
+let swipeHandled = false;
+document.addEventListener('touchstart', e => {
+  if (e.target.closest('#dpad')) return;
+  touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  swipeHandled = false;
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  // Allow scroll only inside explicitly scrollable containers (session list)
+  if (!e.target.closest('.std-sess-list')) e.preventDefault();
+  // Swipe direction detection (game screen only)
+  if (!touchStart || swipeHandled) return;
+  if (!document.getElementById('screen-game').classList.contains('active')) return;
+  const dx = e.touches[0].clientX - touchStart.x;
+  const dy = e.touches[0].clientY - touchStart.y;
+  if (Math.abs(dx) < 25 && Math.abs(dy) < 25) return;
+  if (Math.abs(dx) > Math.abs(dy)) sendDir(dx > 0 ? 'right' : 'left');
+  else sendDir(dy > 0 ? 'down' : 'up');
+  swipeHandled = true;
+}, { passive: false });
+document.addEventListener('touchend', () => { touchStart = null; swipeHandled = false; }, { passive: true });
+
+// ── Session polling ───────────────────────────────────────────────────────────
+let pollTimer = null;
+function startPoll() {
+  fetchSessions();
+  pollTimer = setInterval(fetchSessions, 5000);
+}
+function stopPoll() { clearInterval(pollTimer); pollTimer = null; }
+
+function fetchSessions() {
+  fetch('/api/snake/sessions').then(r => r.json()).then(renderSessions).catch(() => {});
+}
+
+function renderSessions(list) {
+  document.getElementById('sess-badge').textContent = list.length;
+  const el = document.getElementById('sess-list');
+  if (!list.length) { el.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+  el.innerHTML = list.map(s => `
+    <div class="std-sess-row">
+      <div class="std-sess-info">
+        <div class="std-sess-host">${esc(s.hostName)}'s game</div>
+        <div class="std-sess-meta">${esc(s.label)} · ${s.status}</div>
+      </div>
+      ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">Join</button>` : ''}
+      ${s.canObserve ? `<button class="std-btn-obs" onclick="observeSession(${s.id})">Watch</button>` : ''}
+    </div>`).join('');
+}
+
+// ── Lobby actions ─────────────────────────────────────────────────────────────
+function getName() {
+  const n = document.getElementById('name-in').value.trim().slice(0, 24);
+  if (!n) { document.getElementById('lb-err').textContent = 'Please enter your name.'; return null; }
+  document.getElementById('lb-err').textContent = '';
+  myName = n;
+  localStorage.setItem('phub_name', n);
+  return n;
+}
+
+document.getElementById('host-btn').addEventListener('click', () => {
+  const name = getName();
+  if (!name) return;
+  stopPoll();
+  connect(() => wsSend({ type: 'snake_create', name }));
+});
+
+function joinSession(id) {
+  const name = getName();
+  if (!name) return;
+  stopPoll();
+  connect(() => wsSend({ type: 'snake_join', name, sessionId: id }));
+}
+
+function observeSession(id) {
+  const name = getName();
+  if (!name) return;
+  stopPoll();
+  connect(() => wsSend({ type: 'snake_observe', name, sessionId: id }));
+}
+
+// ── Waiting room buttons ──────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'snake_start' }));
+
+document.getElementById('leave-btn').addEventListener('click', returnToLobby);
+
+document.getElementById('wait-sid').addEventListener('click', () => {
+  if (!sessionId) return;
+  navigator.clipboard?.writeText(String(sessionId)).then(() => {
+    const el = document.getElementById('wait-sid');
+    const old = el.textContent;
+    el.textContent = 'Copied!';
+    setTimeout(() => el.textContent = old, 1200);
+  });
+});
+
+// ── Game over buttons ─────────────────────────────────────────────────────────
+document.getElementById('restart-btn').addEventListener('click', () => wsSend({ type: 'snake_restart' }));
+document.getElementById('quit-btn').addEventListener('click', returnToLobby);
+
+// ── Return to lobby ───────────────────────────────────────────────────────────
+function returnToLobby() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  gameState = null; prevSnakes = null; collisionAnims = [];
+  prevCleaner = null; cleanerMoveTime = 0;
+  prevElephant = null; elephantMoveTime = 0;
+  sessionId = null; isHost = false; isObs = false; myIdx = -1;
+  document.getElementById('name-in').value = myName;
+  showScreen('lobby');
+  startPoll();
+}
+
+// ── Canvas resize ─────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (gameState && document.getElementById('screen-game').classList.contains('active')) {
+    initCanvas(gameState.cols, gameState.rows);
+    renderGame();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+if (myName) document.getElementById('name-in').value = myName;
+startPoll();
+</script>
+</body>
+</html>

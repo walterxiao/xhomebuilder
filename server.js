@@ -2,17 +2,41 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const connect5 = require('./games/connect5');
-const airplane = require('./games/airplane');
+const connect5   = require('./games/connect5');
+const airplane   = require('./games/airplane');
 const battleship = require('./games/battleship');
 const pictionary = require('./games/pictionary');
-const presence = require('./games/presence');
-const chess = require('./games/chess');
-const pingpong = require('./games/pingpong');
+const presence   = require('./games/presence');
+const chess      = require('./games/chess');
+const pingpong   = require('./games/pingpong');
 const blockstack = require('./games/blockstack');
-const raiden = require('./games/raiden');
-const gofish = require('./games/gofish');
-const snake = require('./games/snake');
+const raiden     = require('./games/raiden');
+const gofish     = require('./games/gofish');
+const snake      = require('./games/snake');
+const stats      = require('./stats');
+
+// ── Play-count tracking ───────────────────────────────────────────────────────
+// Each entry: [wss, startMessageTypes[]]
+// A second 'connection' listener sniffs for these types and increments the counter.
+const GAME_START_MSGS = [
+  [snake,      'snake',      ['snake_start', 'snake_restart']],
+  [connect5,   'connect5',   ['start']],
+  [chess,      'chess',      ['chess_start', 'chess_rematch_start']],
+  [battleship, 'battleship', ['bs_start']],
+  [airplane,   'airplane',   ['aj_game_start']],
+  [pictionary, 'pictionary', ['pic_start_game']],
+  [pingpong,   'pingpong',   ['start']],
+  [blockstack, 'blockstack', ['start']],
+  [raiden,     'raiden',     ['start']],
+  [gofish,     'gofish',     ['start']],
+];
+for (const [mod, game, types] of GAME_START_MSGS) {
+  mod.wss.on('connection', ws => {
+    ws.on('message', raw => {
+      try { if (types.includes(JSON.parse(raw).type)) stats.increment(game); } catch {}
+    });
+  });
+}
 
 const PORT = process.env.PORT || 9753;
 
@@ -46,6 +70,11 @@ const httpServer = http.createServer((req, res) => {
     '/api/gofish/sessions':     () => gofish.getSessionList(),
     '/api/snake/sessions':      () => snake.getSessionList(),
   };
+  if (urlPath === '/api/stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(stats.getAll()));
+    return;
+  }
   if (SESSION_APIS[urlPath]) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(SESSION_APIS[urlPath]()));

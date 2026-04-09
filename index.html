@@ -90,6 +90,14 @@
       letter-spacing: 1px;
     }
 
+    .play-count {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: #555577;
+      letter-spacing: 1px;
+      min-height: 1em;
+    }
+
     .game-players {
       margin-top: 8px;
       font-size: 0.75rem;
@@ -226,83 +234,93 @@
   <h1>Game Hub</h1>
   <p class="subtitle">Choose a game</p>
 
-  <div class="games-grid">
-    <a href="/connect5" class="game-card">
+  <div class="games-grid" id="games-grid">
+    <a href="/connect5" class="game-card" data-game="connect5">
       <div class="game-icon">&#9899;</div>
       <div class="game-title">Connect&#8209;5</div>
       <div class="game-desc">Place pieces on a 15×15 board. First to get 5 in a row wins.</div>
       <div class="game-meta">2 players &nbsp;·&nbsp; observers welcome</div>
       <div class="game-players" id="players-connect5"></div>
+      <div class="play-count" id="plays-connect5"></div>
     </a>
 
-    <a href="/snake" class="game-card">
+    <a href="/snake" class="game-card" data-game="snake">
       <div class="game-icon">🐍</div>
       <div class="game-title">Snake</div>
       <div class="game-desc">Eat food, grow longer, outlast your opponents. Don't hit the walls or any snake!</div>
       <div class="game-meta">2–4 players &nbsp;·&nbsp; real-time</div>
       <div class="game-players" id="players-snake"></div>
+      <div class="play-count" id="plays-snake"></div>
     </a>
 
-    <a href="/raiden" class="game-card">
+    <a href="/raiden" class="game-card" data-game="raiden">
       <div class="game-icon">✈️</div>
       <div class="game-title">Raiden</div>
       <div class="game-desc">Vertical-scrolling shoot-em-up. Upgrade weapons, dodge bullets, destroy bosses!</div>
       <div class="game-meta">1–2 players &nbsp;·&nbsp; co-op online</div>
+      <div class="play-count" id="plays-raiden"></div>
     </a>
 
-    <a href="/pictionary" class="game-card">
+    <a href="/pictionary" class="game-card" data-game="pictionary">
       <div class="game-icon">&#127912;</div>
       <div class="game-title">Pictionary</div>
       <div class="game-desc">One player draws an animal, the rest guess. Pick wrong and you become an observer!</div>
       <div class="game-meta">2–6 players &nbsp;·&nbsp; drawing &amp; guessing</div>
       <div class="game-players" id="players-pictionary"></div>
+      <div class="play-count" id="plays-pictionary"></div>
     </a>
 
-    <a href="/pingpong" class="game-card">
+    <a href="/pingpong" class="game-card" data-game="pingpong">
       <div class="game-icon">🏓</div>
       <div class="game-title">Ping Pong</div>
       <div class="game-desc">Top-down 2v2 table tennis with spin &amp; curve physics. Mobile friendly.</div>
       <div class="game-meta">1–4 players &nbsp;·&nbsp; observers welcome</div>
       <div class="game-players" id="players-pingpong"></div>
+      <div class="play-count" id="plays-pingpong"></div>
     </a>
 
-    <a href="/airplane" class="game-card">
+    <a href="/airplane" class="game-card" data-game="airplane">
       <div class="game-icon">&#9992;</div>
       <div class="game-title">Airplane Chess</div>
       <div class="game-desc">Roll dice, race your 4 pieces around the board, and reach the center first.</div>
       <div class="game-meta">2–4 players &nbsp;·&nbsp; observers welcome</div>
       <div class="game-players" id="players-airplane"></div>
+      <div class="play-count" id="plays-airplane"></div>
     </a>
 
-    <a href="/battleship" class="game-card">
+    <a href="/battleship" class="game-card" data-game="battleship">
       <div class="game-icon">&#128674;</div>
       <div class="game-title">Battleship</div>
       <div class="game-desc">Place your fleet, then hunt and sink your opponent's ships before they sink yours.</div>
       <div class="game-meta">2 players &nbsp;·&nbsp; classic naval combat</div>
       <div class="game-players" id="players-battleship"></div>
+      <div class="play-count" id="plays-battleship"></div>
     </a>
 
-    <a href="/chess" class="game-card">
+    <a href="/chess" class="game-card" data-game="chess">
       <div class="game-icon">&#9822;</div>
       <div class="game-title">Chess</div>
       <div class="game-desc">Classic chess with full rules — castling, en passant, promotion, check &amp; checkmate.</div>
       <div class="game-meta">2 players &nbsp;·&nbsp; observers welcome</div>
       <div class="game-players" id="players-chess"></div>
+      <div class="play-count" id="plays-chess"></div>
     </a>
 
-    <a href="/gofish" class="game-card">
+    <a href="/gofish" class="game-card" data-game="gofish">
       <div class="game-icon">🐟</div>
       <div class="game-title">Go Fish</div>
       <div class="game-desc">Ask opponents for cards, collect sets of four, and make the most books to win!</div>
       <div class="game-meta">2–4 players &nbsp;·&nbsp; classic card game</div>
+      <div class="play-count" id="plays-gofish"></div>
     </a>
 
-    <a href="/blockstack" class="game-card">
+    <a href="/blockstack" class="game-card" data-game="blockstack">
       <div class="game-icon">🧱</div>
       <div class="game-title">Block Stacker</div>
       <div class="game-desc">Take turns dropping blocks onto the tower. Don't let it fall!</div>
       <div class="game-meta">1–6 players &nbsp;·&nbsp; round-robin turns</div>
       <div class="game-players" id="players-blockstack"></div>
+      <div class="play-count" id="plays-blockstack"></div>
     </a>
   </div>
 
@@ -427,6 +445,21 @@ nameEditorInput.addEventListener('input', () => {
     setTimeout(() => document.getElementById('nov-input').focus(), 50);
   }
 })();
+
+// ── Sort game cards by play count ─────────────────────────────────────────────
+fetch('/api/stats').then(r => r.json()).then(counts => {
+  const grid  = document.getElementById('games-grid');
+  const cards = [...grid.querySelectorAll('.game-card')];
+  // Update play-count badges
+  for (const card of cards) {
+    const n = counts[card.dataset.game] || 0;
+    const el = document.getElementById(`plays-${card.dataset.game}`);
+    if (el) el.textContent = n > 0 ? `${n.toLocaleString()} play${n === 1 ? '' : 's'}` : '';
+  }
+  // Sort descending by count, preserve original order for ties (stable sort)
+  cards.sort((a, b) => (counts[b.dataset.game] || 0) - (counts[a.dataset.game] || 0));
+  for (const card of cards) grid.appendChild(card);
+}).catch(() => {});
 </script>
 </body>
 </html>

@@ -78,7 +78,7 @@ function startGame(sess) {
   if (sess.cleanerTimeout) clearTimeout(sess.cleanerTimeout);
   sess.cleanerTimeout = null;
   if (sess.elephantTimer) clearInterval(sess.elephantTimer);
-  sess.elephantTimer = setInterval(() => spawnElephant(sess), 30000);
+  sess.elephantTimer = setInterval(() => spawnElephant(sess), 60000);
   sess.elephant = null;
   sess.elephantCount = 0;
 
@@ -207,7 +207,7 @@ function tick(sess) {
     if (p.dizzy  > 0) p.dizzy--;
   }
 
-  if (autoPooped) { mergePoop(sess); scheduleCleaner(sess); }
+  if (autoPooped) { scheduleCleaner(sess); }
 
   spawnFood(sess);
 
@@ -362,35 +362,30 @@ function moveCleaner(sess) {
 function spawnElephant(sess) {
   if (!sess.started || sess.gameOver || sess.elephant) return;
   sess.elephantCount++;
-  const size = Math.min(10, sess.elephantCount);
+  const size = Math.min(5, sess.elephantCount);
   const ly = Math.floor(Math.random() * (ROWS - size + 1));
-  sess.elephant = { lx: -size, ly, size, poopDropped: 0 };
+  const targetPoops = 10 + Math.floor(Math.random() * 11); // 10–20
+  sess.elephant = { lx: -size, ly, size, poopDropped: 0, targetPoops };
 }
 
 function moveElephant(sess) {
   if (!sess.elephant) return;
-  const { lx, ly, size } = sess.elephant;
+  const { lx, ly, size, targetPoops } = sess.elephant;
   let { poopDropped } = sess.elephant;
 
-  // Drop poops in the leftmost column (lx) being vacated — 60% per row
-  if (lx >= 0 && lx < COLS) {
+  // Drop one poop per step in the vacated column until target is reached
+  if (lx >= 0 && lx < COLS && poopDropped < targetPoops) {
     const poopSet  = new Set(sess.poops.map(p => `${p.x},${p.y}`));
     const foodSet  = new Set(sess.food.map(f => `${f.x},${f.y}`));
     const snakeOcc = new Set();
     for (const p of sess.players) if (p.alive) for (const s of p.body) snakeOcc.add(`${s.x},${s.y}`);
-    let addedAny = false;
-    for (let row = ly; row < ly + size; row++) {
-      if (Math.random() < 0.60) {
-        const pk = `${lx},${row}`;
-        if (!poopSet.has(pk) && !foodSet.has(pk) && !snakeOcc.has(pk)) {
-          sess.poops.push({ x: lx, y: row });
-          poopSet.add(pk);
-          poopDropped++;
-          addedAny = true;
-        }
-      }
+    const row = ly + Math.floor(Math.random() * size);
+    const pk = `${lx},${row}`;
+    if (!poopSet.has(pk) && !foodSet.has(pk) && !snakeOcc.has(pk)) {
+      sess.poops.push({ x: lx, y: row });
+      poopDropped++;
+      scheduleCleaner(sess);
     }
-    if (addedAny) { mergePoop(sess); scheduleCleaner(sess); }
   }
 
   // Move right; also wander up/down
@@ -400,7 +395,7 @@ function moveElephant(sess) {
   const dy = Math.random() < 0.25 ? -1 : Math.random() < 0.33 ? 1 : 0;
   const newLY = Math.max(0, Math.min(ROWS - size, ly + dy));
 
-  sess.elephant = { lx: newLX, ly: newLY, size, poopDropped };
+  sess.elephant = { lx: newLX, ly: newLY, size, poopDropped, targetPoops };
 
   // Collide with snakes entering the new footprint
   const hit = new Set();
@@ -413,58 +408,6 @@ function moveElephant(sess) {
       }
     }
   }
-}
-
-// ── Poop merging ──────────────────────────────────────────────────────────────
-// If a connected poop group fills > 2/3 of its bounding rectangle, expand to
-// fill the entire rectangle. Repeat until stable.
-function mergePoop(sess) {
-  const ADJ = [[1,0],[-1,0],[0,1],[0,-1]];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const poopSet = new Set(sess.poops.map(p => `${p.x},${p.y}`));
-    const visited = new Set();
-
-    for (const start of sess.poops) {
-      const sk = `${start.x},${start.y}`;
-      if (visited.has(sk)) continue;
-
-      // BFS to find connected component
-      const comp = [];
-      const q = [start];
-      visited.add(sk);
-      while (q.length) {
-        const c = q.shift();
-        comp.push(c);
-        for (const [dx, dy] of ADJ) {
-          const nk = `${c.x+dx},${c.y+dy}`;
-          if (poopSet.has(nk) && !visited.has(nk)) { visited.add(nk); q.push({x:c.x+dx, y:c.y+dy}); }
-        }
-      }
-
-      const minX = Math.min(...comp.map(p => p.x));
-      const maxX = Math.max(...comp.map(p => p.x));
-      const minY = Math.min(...comp.map(p => p.y));
-      const maxY = Math.max(...comp.map(p => p.y));
-      const area = (maxX - minX + 1) * (maxY - minY + 1);
-
-      // Fill if count > 2/3 of bounding rect
-      if (comp.length * 3 > area * 2) {
-        for (let x = minX; x <= maxX; x++) {
-          for (let y = minY; y <= maxY; y++) {
-            if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
-            const k = `${x},${y}`;
-            if (!poopSet.has(k)) { sess.poops.push({x, y}); poopSet.add(k); changed = true; }
-          }
-        }
-      }
-    }
-  }
-
-  // Remove food covered by (possibly expanded) poops
-  const finalSet = new Set(sess.poops.map(p => `${p.x},${p.y}`));
-  sess.food = sess.food.filter(f => !finalSet.has(`${f.x},${f.y}`));
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────

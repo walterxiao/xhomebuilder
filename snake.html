@@ -503,7 +503,7 @@ function renderGame() {
     ctx.shadowBlur = 0;
   }
 
-  // Cleaner — smoothly interpolated (moves every 2 ticks = 400ms)
+  // Cleaner — swiping broom, smoothly interpolated (moves every 2 ticks = 400ms)
   if (gameState.cleaner) {
     const { leaving } = gameState.cleaner;
     let crx = gameState.cleaner.x, cry = gameState.cleaner.y;
@@ -512,19 +512,65 @@ function renderGame() {
       crx = prevCleaner.x + (gameState.cleaner.x - prevCleaner.x) * ct;
       cry = prevCleaner.y + (gameState.cleaner.y - prevCleaner.y) * ct;
     }
-    ctx.globalAlpha = leaving ? 0.55 : 1;
-    ctx.fillStyle = leaving ? '#fff8cc' : '#f0f8ff';
-    ctx.shadowColor = leaving ? '#ffdd44' : '#88ddff';
-    ctx.shadowBlur = 16;
-    ctx.fillRect(crx * CELL + 1, cry * CELL + 1, CELL - 2, CELL - 2);
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = leaving ? '#886600' : '#1166aa';
-    ctx.lineWidth = Math.max(1, CELL * 0.15);
+    // Determine facing direction from movement delta
+    let faceDx = 0, faceDy = 0;
+    if (prevCleaner) {
+      faceDx = gameState.cleaner.x - prevCleaner.x;
+      faceDy = gameState.cleaner.y - prevCleaner.y;
+    }
+    // Swipe animation: oscillates perpendicular to travel direction
+    const swingAmt = Math.sin(now * 0.015) * 0.35; // radians
+    const baseAngle = Math.atan2(faceDy, faceDx); // handle points toward travel dir
+    ctx.save();
+    ctx.globalAlpha = leaving ? 0.5 : 1;
+    const cx = crx * CELL + CELL / 2;
+    const cy = cry * CELL + CELL / 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(baseAngle + Math.PI / 4 + swingAmt); // ~45° off travel + swing
+
+    const u = Math.max(2, CELL * 0.1); // unit size
+
+    // ── Handle (stick) ──
+    ctx.strokeStyle = leaving ? '#aa8833' : '#8B5E3C';
+    ctx.lineWidth = Math.max(1.5, u * 0.9);
     ctx.lineCap = 'round';
-    const ccx = crx * CELL + CELL/2, ccy = cry * CELL + CELL/2, cr = CELL * 0.26;
-    ctx.beginPath(); ctx.moveTo(ccx - cr, ccy); ctx.lineTo(ccx + cr, ccy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ccx, ccy - cr); ctx.lineTo(ccx, ccy + cr); ctx.stroke();
-    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, CELL * 0.32);   // bristle end
+    ctx.lineTo(0, -CELL * 0.45);  // top of handle
+    ctx.stroke();
+
+    // ── Bristle head ──
+    const bW = CELL * 0.42, bH = CELL * 0.14;
+    const bY = CELL * 0.32;
+    // Main bristle block
+    ctx.fillStyle = leaving ? '#ccaa55' : '#d4af37';
+    ctx.beginPath();
+    ctx.roundRect(-bW / 2, bY, bW, bH, u * 0.4);
+    ctx.fill();
+    // Bristle strands
+    ctx.strokeStyle = leaving ? '#aa8822' : '#a07820';
+    ctx.lineWidth = Math.max(1, u * 0.55);
+    ctx.lineCap = 'round';
+    const strands = 7;
+    for (let s = 0; s < strands; s++) {
+      const sx = -bW / 2 + (bW / (strands - 1)) * s;
+      const strandSwing = Math.sin(now * 0.018 + s * 0.7) * u * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(sx, bY + bH);
+      ctx.lineTo(sx + strandSwing, bY + bH + u * 2.2);
+      ctx.stroke();
+    }
+
+    // ── Glow / dust cloud when sweeping ──
+    if (!leaving) {
+      ctx.globalAlpha = 0.18 + Math.abs(Math.sin(now * 0.012)) * 0.15;
+      ctx.fillStyle = '#ffffaa';
+      ctx.beginPath();
+      ctx.ellipse(0, bY + bH + u * 2, bW * 0.55, u * 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
   }
 
   // Monster — pixel art, smoothly interpolated, grows each appearance

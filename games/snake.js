@@ -5,7 +5,8 @@ const wss = new WebSocketServer({ noServer: true });
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COLS = 25, ROWS = 20;
 const TICK_MS = 100;
-const MOVE_EVERY = 3;   // snakes advance 1 cell every MOVE_EVERY ticks = 300ms
+const MOVE_EVERY = 3;   // default: snakes advance 1 cell every MOVE_EVERY ticks = 300ms
+const SPEED_MAP = { slower: 5, normal: 3, faster: 2 };
 const MAX_PLAYERS = 4;
 const FOOD_PER_PLAYER = 1;
 const INIT_LEN = 4;
@@ -42,7 +43,7 @@ function mkSess() {
   const s = { id: nextId++, players: [], obs: [], food: [], poops: [],
     cleaner: null, cleanerTickCount: 0, cleanerTimeout: null,
     elephant: null, elephantTimer: null, elephantCount: 0, elephantPoopBonus: 0,
-    started: false, gameOver: false, interval: null };
+    started: false, gameOver: false, interval: null, moveEvery: MOVE_EVERY };
   sessions.set(s.id, s);
   return s;
 }
@@ -104,6 +105,7 @@ function startGame(sess) {
   bcast(sess, {
     type: 'snake_start',
     cols: COLS, rows: ROWS,
+    moveEvery: sess.moveEvery,
     players: sess.players.map((p, i) => ({ name: p.name, color: p.color, idx: i })),
     snakes: sess.players.map(p => ({ body: p.body, alive: true, dizzy: 0, frozen: 0 })),
     food: sess.food,
@@ -142,7 +144,7 @@ function tick(sess) {
     return;
   }
 
-  const doMove = (sess.tickCount % MOVE_EVERY === 0);
+  const doMove = (sess.tickCount % sess.moveEvery === 0);
 
   let autoPooped = false;
 
@@ -513,6 +515,7 @@ wss.on('connection', ws => {
 
     } else if (m.type === 'snake_start') {
       if (!sess || !me || sess.players[0] !== me || sess.started) return;
+      if (m.speed && SPEED_MAP[m.speed]) sess.moveEvery = SPEED_MAP[m.speed];
       startGame(sess);
 
     } else if (m.type === 'direction') {
@@ -524,6 +527,7 @@ wss.on('connection', ws => {
 
     } else if (m.type === 'snake_restart') {
       if (!sess || !me || sess.players[0] !== me || !sess.gameOver) return;
+      if (m.speed && SPEED_MAP[m.speed]) sess.moveEvery = SPEED_MAP[m.speed];
       startGame(sess);
 
     }

@@ -68,6 +68,12 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 #dpad-up{grid-area:up}#dpad-left{grid-area:left}#dpad-right{grid-area:right}#dpad-down{grid-area:down}
 @media(min-width:600px){#dpad{display:none}}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+/* ── Speed selector ── */
+#speed-row{display:none;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:4px}
+#speed-row.visible{display:flex}
+.speed-btn{padding:5px 14px;border-radius:20px;border:1px solid #2a4a2a;background:#0f1f0f;color:#7070a0;font-size:.78rem;font-family:inherit;cursor:pointer;letter-spacing:1px;transition:all .15s}
+.speed-btn:hover{border-color:#44ee88;color:#44ee88}
+.speed-btn.active{border-color:#44ee88;background:#1a3a1a;color:#44ee88;font-weight:bold}
 /* ── Game over ── */
 #over-box{background:#0f1f0f;border:1px solid #2a4a2a;border-radius:12px;padding:36px 44px;text-align:center;max-width:360px;width:90vw}
 #over-title{font-size:1.4rem;letter-spacing:4px;color:#44ee88;margin-bottom:6px}
@@ -111,6 +117,11 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div class="wait-players" id="wait-players"></div>
     <div class="wait-msg" id="wait-msg">Waiting for players…</div>
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+      <div id="speed-row">
+        <button class="speed-btn" data-speed="slower">🐢 Slower</button>
+        <button class="speed-btn active" data-speed="normal">▶ Normal</button>
+        <button class="speed-btn" data-speed="faster">⚡ Faster</button>
+      </div>
       <button class="btn-green" id="start-btn" style="display:none">▶ Start Game</button>
       <button class="btn-ghost" id="leave-btn">Leave</button>
     </div>
@@ -213,6 +224,7 @@ function handle(msg) {
       break;
 
     case 'snake_start':
+      if (msg.moveEvery) TICK_MS = msg.moveEvery * 100; // movement period for interpolation
       gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
       prevCleaner = null; cleanerMoveTime = 0;
       prevElephant = null; elephantMoveTime = 0;
@@ -317,6 +329,7 @@ function renderWaiting(players) {
 
   const isH = players.length > 0 && players[0].name === myName;
   document.getElementById('start-btn').style.display = isH ? 'block' : 'none';
+  document.getElementById('speed-row').classList.toggle('visible', isH);
   document.getElementById('wait-msg').textContent =
     players.length < 2 ? 'Need at least 2 players to start…' : isH ? 'Ready to start!' : 'Waiting for host to start…';
 }
@@ -979,7 +992,15 @@ function observeSession(id) {
 }
 
 // ── Waiting room buttons ──────────────────────────────────────────────────────
-document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'snake_start' }));
+let selectedSpeed = 'normal';
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedSpeed = btn.dataset.speed;
+    document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'snake_start', speed: selectedSpeed }));
 
 document.getElementById('leave-btn').addEventListener('click', returnToLobby);
 
@@ -994,7 +1015,7 @@ document.getElementById('wait-sid').addEventListener('click', () => {
 });
 
 // ── Game over buttons ─────────────────────────────────────────────────────────
-document.getElementById('restart-btn').addEventListener('click', () => wsSend({ type: 'snake_restart' }));
+document.getElementById('restart-btn').addEventListener('click', () => wsSend({ type: 'snake_restart', speed: selectedSpeed }));
 document.getElementById('quit-btn').addEventListener('click', returnToLobby);
 
 // ── Return to lobby ───────────────────────────────────────────────────────────

@@ -69,7 +69,49 @@ function spawnFood(sess) {
   }
 }
 
-// ── Game start ────────────────────────────────────────────────────────────────
+// ── Resurrection ─────────────────────────────────────────────────────────────
+function resurrect(sess, saver, target) {
+  if (!saver.alive || target.alive) return;
+  if (saver.body.length < 2) return; // need at least 2 to give half
+
+  const give = Math.max(1, Math.floor(saver.body.length / 2));
+  // Take tail segments from saver
+  const gifted = saver.body.splice(saver.body.length - give, give);
+
+  // Find a safe spawn cell: spiral out from target's last known head
+  const occ = occupiedSet(sess);
+  let spawnX = -1, spawnY = -1;
+  // Try expanding search from where they died
+  outer: for (let r = 0; r < Math.max(COLS, ROWS); r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // border only
+        const cx = Math.floor(COLS / 2) + dx;
+        const cy = Math.floor(ROWS / 2) + dy;
+        if (cx < 1 || cx >= COLS-1 || cy < 1 || cy >= ROWS-1) continue;
+        if (!occ.has(`${cx},${cy}`)) { spawnX = cx; spawnY = cy; break outer; }
+      }
+    }
+  }
+  if (spawnX < 0) return; // no room
+
+  // Revive target with the gifted segments placed behind spawn
+  target.alive  = true;
+  target.dizzy  = 15; // brief immunity
+  target.frozen = 0;
+  target.dir    = 'right';
+  target.nextDir = 'right';
+  target.body   = [{ x: spawnX, y: spawnY }];
+  for (let i = 1; i < gifted.length; i++) {
+    target.body.push({ x: spawnX - i, y: spawnY });
+  }
+
+  bcast(sess, { type: 'snake_resurrected',
+    saverIdx: sess.players.indexOf(saver),
+    targetIdx: sess.players.indexOf(target) });
+}
+
+
 function startGame(sess) {
   sess.started = true;
   sess.gameOver = false;
@@ -583,6 +625,12 @@ wss.on('connection', ws => {
       sess.players.push(bot);
       bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
       send(me.ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
+
+    } else if (m.type === 'snake_save') {
+      if (!sess || !me || !me.alive || !sess.started || sess.gameOver) return;
+      const target = sess.players[+m.targetIdx];
+      if (!target || target === me || target.alive) return;
+      resurrect(sess, me, target);
 
     } else if (m.type === 'snake_start') {
       if (!sess || !me || sess.players[0] !== me || sess.started) return;

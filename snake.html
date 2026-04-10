@@ -58,7 +58,9 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .sc-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
 .sc-name{color:#c0d0c0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc-val{color:#44ee88;font-weight:bold;min-width:24px;text-align:right}
-.score-chip.dead{opacity:.4}
+.score-chip.dead{opacity:.5}
+.save-btn{font-size:.65rem;padding:2px 7px;border-radius:10px;border:1px solid #44ee88;background:#0d2a0d;color:#44ee88;cursor:pointer;font-family:inherit;letter-spacing:.5px;margin-left:2px;white-space:nowrap}
+.save-btn:hover{background:#1a4a1a}
 #canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative;background:#060e06}
 #canvas{display:block;image-rendering:pixelated}
 /* ── Mobile controls ── */
@@ -307,6 +309,14 @@ function handle(msg) {
         if (curr.body.length > prev.body.length) SFX.eat();
       }
       renderScoreBar();
+      break;
+    }
+
+    case 'snake_resurrected': {
+      const saverName = gameState.players[msg.saverIdx]?.name || '?';
+      const targetName = gameState.players[msg.targetIdx]?.name || '?';
+      showToast(`💚 ${saverName} revived ${targetName}!`);
+      SFX.resurrect();
       break;
     }
 
@@ -744,19 +754,43 @@ function renderLoop() {
 }
 
 // ── Score bar ─────────────────────────────────────────────────────────────────
+// ── Toast notification ────────────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(msg) {
+  let el = document.getElementById('game-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'game-toast';
+    el.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,40,0,.85);border:1px solid #44ee88;border-radius:20px;padding:6px 20px;color:#44ee88;font-size:.85rem;z-index:20;pointer-events:none;transition:opacity .3s;white-space:nowrap';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2200);
+}
+
 function renderScoreBar() {
   if (!gameState) return;
   const { players, snakes } = gameState;
-  document.getElementById('score-bar').innerHTML = players.map((p, i) => {
+  const iAmAlive = myIdx >= 0 && snakes[myIdx] && snakes[myIdx].alive;
+  const bar = document.getElementById('score-bar');
+  bar.innerHTML = players.map((p, i) => {
     const sn = snakes[i];
     const alive = sn ? sn.alive : false;
     const len = sn ? sn.body.length : 0;
+    const canSave = !alive && iAmAlive && i !== myIdx && snakes[myIdx] && snakes[myIdx].body.length >= 2;
     return `<div class="score-chip${alive ? '' : ' dead'}">
       <span class="sc-dot" style="background:${p.color}"></span>
       <span class="sc-name">${esc(p.name)}</span>
       <span class="sc-val">${len}</span>
+      ${canSave ? `<button class="save-btn" data-save-idx="${i}">💚 Save</button>` : ''}
     </div>`;
   }).join('');
+  // Wire save buttons
+  bar.querySelectorAll('.save-btn').forEach(btn => {
+    btn.addEventListener('click', () => wsSend({ type: 'snake_save', targetIdx: +btn.dataset.saveIdx }));
+  });
 }
 
 // ── Game over ─────────────────────────────────────────────────────────────────
@@ -859,6 +893,14 @@ const SFX = {
   poop() {
     // Squelch
     playTone({ freq: 200, freq2: 80, type: 'sine', gain: 0.18, duration: 0.15, attack: 0.005 });
+  },
+  resurrect() {
+    // Warm rising arpeggio — life restored
+    [0, 80, 160, 240].forEach((delay, i) => {
+      const freq = [330, 440, 523, 659][i];
+      setTimeout(() => playTone({ freq, type: 'sine', gain: 0.22, duration: 0.22, attack: 0.01 }), delay);
+    });
+    setTimeout(() => playChord([523, 659, 784], { type: 'sine', gain: 0.28, duration: 0.4, attack: 0.01 }), 360);
   },
 };
 

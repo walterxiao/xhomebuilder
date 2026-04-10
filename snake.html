@@ -224,6 +224,14 @@ function handle(msg) {
     case 'snake_lobby':
       isHost = msg.players.length > 0 && msg.players[0].name === myName;
       renderWaiting(msg.players);
+      if (gameState) {
+        gameState.players = msg.players;
+        // Pad snakes array if new players arrived
+        while (gameState.snakes.length < msg.players.length) {
+          gameState.snakes.push({ body: [], alive: false, dizzy: 0, frozen: 0 });
+        }
+        renderScoreBar();
+      }
       break;
 
     case 'snake_start':
@@ -1006,7 +1014,7 @@ function renderSessions(list) {
         <div class="std-sess-meta">${esc(s.label)} · ${s.status}</div>
       </div>
       ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">${s.status === 'playing' ? '▶ Join' : 'Join'}</button>` : ''}
-      ${s.canObserve ? `<button class="std-btn-obs" onclick="observeSession(${s.id})">👁 Watch</button>` : ''}
+      ${(s.canObserve || s.status === 'playing') ? `<button class="std-btn-obs" onclick="observeSession(${s.id})">👁 Watch</button>` : ''}
     </div>`).join('');
 }
 

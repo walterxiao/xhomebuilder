@@ -84,7 +84,7 @@ function startGame(sess) {
   sess.elephantCount = 0;
   sess.elephantPoopCols = null;
   sess.tickCount = 0;
-  sess.countdownTicks = 30; // 3 s at TICK_MS=100ms
+  sess.countdownTicks = 50; // 5 s at TICK_MS=100ms
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];

@@ -41,7 +41,7 @@ const sessions = new Map();
 function mkSess() {
   const s = { id: nextId++, players: [], obs: [], food: [], poops: [],
     cleaner: null, cleanerTickCount: 0, cleanerTimeout: null,
-    elephant: null, elephantTimer: null, elephantCount: 0,
+    elephant: null, elephantTimer: null, elephantCount: 0, elephantPoopBonus: 0,
     started: false, gameOver: false, interval: null };
   sessions.set(s.id, s);
   return s;
@@ -82,6 +82,7 @@ function startGame(sess) {
   sess.elephantTimer = setInterval(() => spawnElephant(sess), 30000);
   sess.elephant = null;
   sess.elephantCount = 0;
+  sess.elephantPoopBonus = 0;
   sess.elephantPoopCols = null;
   sess.tickCount = 0;
   sess.countdownTicks = 50; // 5 s at TICK_MS=100ms
@@ -396,10 +397,10 @@ function spawnElephant(sess) {
 
   sess.elephant = { lx, ly, size, dir };
 
-  // Pre-pick which positions along the travel axis will get a poop
-  // Each growth level adds 3 to both bounds (size 1→10-20, size 2→13-23, … size 5→22-32)
-  const poopBonus = (size - 1) * 3;
-  const target   = (10 + poopBonus) + Math.floor(Math.random() * 11); // 10–20 + bonus
+  // Accumulate poop bonus each appearance: increment = 5 - active player count
+  const activePlayers = sess.players.filter(p => p.alive).length;
+  sess.elephantPoopBonus += Math.max(1, 5 - activePlayers);
+  const target = (10 + sess.elephantPoopBonus) + Math.floor(Math.random() * 11); // 10–20 + cumulative bonus
   const axisLen  = (dir === 'right' || dir === 'left') ? COLS : ROWS;
   const all      = Array.from({ length: axisLen }, (_, i) => i);
   for (let i = all.length - 1; i > 0; i--) {

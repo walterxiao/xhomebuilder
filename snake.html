@@ -226,11 +226,6 @@ function handle(msg) {
       renderWaiting(msg.players);
       break;
 
-    case 'snake_observing':
-      sessionId = msg.sessionId;
-      isObs = true;
-      break;
-
     case 'snake_start':
       if (msg.moveEvery) TICK_MS = msg.moveEvery * 100; // movement period for interpolation
       gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
@@ -1008,8 +1003,7 @@ function renderSessions(list) {
         <div class="std-sess-host">${esc(s.hostName)}'s game</div>
         <div class="std-sess-meta">${esc(s.label)} · ${s.status}</div>
       </div>
-      ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">Join</button>` : ''}
-      ${s.canObserve ? `<button class="std-btn-obs" onclick="observeSession(${s.id})">Watch</button>` : ''}
+      ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">${s.status === 'playing' ? '▶ Join' : 'Join'}</button>` : ''}
     </div>`).join('');
 }
 
@@ -1037,12 +1031,6 @@ function joinSession(id) {
   connect(() => wsSend({ type: 'snake_join', name, sessionId: id }));
 }
 
-function observeSession(id) {
-  const name = getName();
-  if (!name) return;
-  stopPoll();
-  connect(() => wsSend({ type: 'snake_observe', name, sessionId: id }));
-}
 
 // ── Waiting room buttons ──────────────────────────────────────────────────────
 let selectedSpeed = 'normal';

@@ -345,7 +345,12 @@ function tick(sess) {
 
   const alive = sess.players.filter(p => p.alive);
   const total = sess.players.length;
-  const ended = doMove && (total <= 1 ? alive.length === 0 : alive.length <= 1);
+  // End if: ≤1 alive (standard), OR all alive players are bots (no humans left)
+  const aliveHumans = alive.filter(p => !p.isAI);
+  const ended = doMove && (
+    (total <= 1 ? alive.length === 0 : alive.length <= 1) ||
+    (alive.length > 0 && aliveHumans.length === 0)
+  );
 
   bcast(sess, {
     type: 'snake_tick',
@@ -596,23 +601,34 @@ wss.on('connection', ws => {
       if (!name) return;
       const target = sessions.get(+m.sessionId);
       if (!target) return send(ws, { type: 'snake_err', message: 'Session not found.' });
-      if (target.started) return send(ws, { type: 'snake_err', message: 'Game already started.' });
+      if (target.gameOver) return send(ws, { type: 'snake_err', message: 'Game has ended.' });
       if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
-      me = { ws, name, color: COLORS[sess.players.length % COLORS.length], dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0, frozen: 0 };
+      me = { ws, name, color: COLORS[sess.players.length % COLORS.length],
+             dir: 'right', nextDir: 'right', body: [], alive: false,
+             score: 0, dizzy: 0, frozen: 0 };
       sess.players.push(me);
-      bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
-      send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
-    } else if (m.type === 'snake_observe') {
-      if (sess) return;
-      const name = String(m.name || '').trim().slice(0, 24);
-      const sid = +m.sessionId;
-      const target = sessions.get(sid) || [...sessions.values()].find(s => !s.gameOver);
-      if (!target) return send(ws, { type: 'snake_err', message: 'No active sessions.' });
-      sess = target;
-      sess.obs.push({ ws, name });
-      send(ws, { type: 'snake_observing', sessionId: sess.id });
+      if (!sess.started) {
+        // Pre-game: go to waiting room
+        bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+        send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
+      } else {
+        // Mid-game: drop them in as a dead player; send full game state
+        bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+        send(ws, {
+          type: 'snake_start',
+          cols: COLS, rows: ROWS,
+          moveEvery: sess.moveEvery,
+          players: pubPlayers(sess),
+          snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy, frozen: p.frozen })),
+          food: sess.food,
+          poops: sess.poops,
+          cleaner: sess.cleaner,
+          elephant: sess.elephant,
+          countdown: 0,
+        });
+      }
 
     } else if (m.type === 'snake_add_bot') {
       if (!sess || !me || sess.players[0] !== me || sess.started) return;
@@ -680,8 +696,7 @@ function getSessionList() {
     players: s.players.length,
     maxPlayers: MAX_PLAYERS,
     observers: s.obs.length,
-    canJoin: !s.started && s.players.length < MAX_PLAYERS,
-    canObserve: true,
+    canJoin: !s.gameOver && s.players.length < MAX_PLAYERS,
     status: s.started ? 'playing' : 'waiting',
     label: s.started
       ? `${s.players.filter(p => p.alive).length} alive / ${s.players.length} total`

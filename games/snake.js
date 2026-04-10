@@ -84,6 +84,7 @@ function startGame(sess) {
   sess.elephantCount = 0;
   sess.elephantPoopCols = null;
   sess.tickCount = 0;
+  sess.countdownTicks = 30; // 3 s at TICK_MS=100ms
 
   sess.players.forEach((p, i) => {
     const sp = START[i % START.length];
@@ -108,6 +109,7 @@ function startGame(sess) {
     poops: [],
     cleaner: null,
     elephant: null,
+    countdown: Math.ceil(sess.countdownTicks * TICK_MS / 1000),
   });
 
   if (sess.interval) clearInterval(sess.interval);
@@ -127,6 +129,18 @@ function applyCollision(p) {
 // ── Game tick ─────────────────────────────────────────────────────────────────
 function tick(sess) {
   sess.tickCount++;
+
+  // Countdown phase — snakes don't move, broadcast countdown seconds
+  if (sess.countdownTicks > 0) {
+    const prevSec = Math.ceil(sess.countdownTicks * TICK_MS / 1000);
+    sess.countdownTicks--;
+    const newSec = Math.ceil(sess.countdownTicks * TICK_MS / 1000);
+    if (newSec !== prevSec || sess.countdownTicks === 0) {
+      bcast(sess, { type: 'snake_countdown', seconds: newSec });
+    }
+    return;
+  }
+
   const doMove = (sess.tickCount % MOVE_EVERY === 0);
 
   let autoPooped = false;

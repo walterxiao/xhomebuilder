@@ -120,8 +120,11 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 <!-- ── GAME ── -->
 <div id="screen-game" class="screen">
   <div id="score-bar"></div>
-  <div id="canvas-wrap">
+  <div id="canvas-wrap" style="position:relative">
     <canvas id="canvas"></canvas>
+    <div id="countdown-overlay" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10">
+      <div id="countdown-num" style="font-size:clamp(4rem,20vw,8rem);font-weight:bold;color:#d4af37;text-shadow:0 0 40px rgba(212,175,55,0.8);transition:transform 0.15s,opacity 0.15s"></div>
+    </div>
   </div>
   <div id="dpad">
     <button class="dpad-btn" id="dpad-up">▲</button>
@@ -221,6 +224,11 @@ function handle(msg) {
       renderScoreBar();
       showScreen('game');
       if (!rafId) rafId = requestAnimationFrame(renderLoop);
+      if (msg.countdown > 0) showCountdown(msg.countdown);
+      break;
+
+    case 'snake_countdown':
+      showCountdown(msg.seconds);
       break;
 
     case 'snake_tick': {
@@ -689,8 +697,38 @@ function showGameOver(msg) {
 // ── Input ─────────────────────────────────────────────────────────────────────
 const OPP = { up:'down', down:'up', left:'right', right:'left' };
 
+let countdownActive = false;
+
+function showCountdown(secs) {
+  countdownActive = secs > 0;
+  const overlay = document.getElementById('countdown-overlay');
+  const num     = document.getElementById('countdown-num');
+  if (secs > 0) {
+    overlay.style.display = 'flex';
+    num.textContent = secs;
+    num.style.transform = 'scale(1.3)';
+    num.style.opacity   = '1';
+    requestAnimationFrame(() => {
+      num.style.transform = 'scale(1)';
+      num.style.opacity   = '0.9';
+    });
+  } else {
+    num.textContent = 'GO!';
+    num.style.color = '#44ee88';
+    num.style.transform = 'scale(1.4)';
+    num.style.opacity = '1';
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      num.style.color = '#d4af37';
+      num.style.transform = 'scale(1)';
+    }, 700);
+    countdownActive = false;
+  }
+}
+
 function sendDir(dir) {
   if (isObs) return;
+  if (countdownActive) return;
   if (gameState && myIdx >= 0 && gameState.snakes[myIdx] && !gameState.snakes[myIdx].alive) return;
   if (OPP[dir] === myDir) return;
   myDir = dir;

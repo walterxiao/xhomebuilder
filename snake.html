@@ -151,6 +151,11 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div id="over-title">Game Over</div>
     <div id="over-winner"></div>
     <div id="over-scores"></div>
+    <div id="speed-row-over" style="display:none;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px">
+      <button class="speed-btn" data-speed-over="slower">🐢 Slower</button>
+      <button class="speed-btn active" data-speed-over="normal">▶ Normal</button>
+      <button class="speed-btn" data-speed-over="faster">⚡ Faster</button>
+    </div>
     <button class="btn-green" id="restart-btn" style="display:none">↩ Play Again</button>
     <button class="btn-ghost" id="quit-btn" style="margin-top:8px">Back to Lobby</button>
   </div>
@@ -764,6 +769,10 @@ function showGameOver(msg) {
       <span class="over-score">${s.score} food</span>
     </div>`).join('');
   document.getElementById('restart-btn').style.display = isHost ? 'block' : 'none';
+  document.getElementById('speed-row-over').style.display = isHost ? 'flex' : 'none';
+  // Sync over-screen speed buttons to current selection
+  document.querySelectorAll('[data-speed-over]').forEach(b =>
+    b.classList.toggle('active', b.dataset.speedOver === selectedSpeed));
   // Play win or game-over sound
   if (msg.winner && msg.winner === myName) SFX.win();
   else SFX.gameOver();
@@ -993,12 +1002,17 @@ function observeSession(id) {
 
 // ── Waiting room buttons ──────────────────────────────────────────────────────
 let selectedSpeed = 'normal';
-document.querySelectorAll('.speed-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    selectedSpeed = btn.dataset.speed;
-    document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
-  });
-});
+function setSpeed(speed) {
+  selectedSpeed = speed;
+  document.querySelectorAll('[data-speed]').forEach(b =>
+    b.classList.toggle('active', b.dataset.speed === speed));
+  document.querySelectorAll('[data-speed-over]').forEach(b =>
+    b.classList.toggle('active', b.dataset.speedOver === speed));
+}
+document.querySelectorAll('[data-speed]').forEach(btn =>
+  btn.addEventListener('click', () => setSpeed(btn.dataset.speed)));
+document.querySelectorAll('[data-speed-over]').forEach(btn =>
+  btn.addEventListener('click', () => setSpeed(btn.dataset.speedOver)));
 
 document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'snake_start', speed: selectedSpeed }));
 

@@ -32,7 +32,7 @@ function bcast(sess, o) {
 }
 
 function pubPlayers(sess) {
-  return sess.players.map(p => ({ name: p.name, color: p.color, isAI: !!p.isAI }));
+  return sess.players.map(p => ({ name: p.name, color: p.color, isAI: !!p.isAI, isWatcher: !!p.isWatcher }));
 }
 
 // ── Session factory ───────────────────────────────────────────────────────────
@@ -343,8 +343,9 @@ function tick(sess) {
     }
   }
 
-  const alive = sess.players.filter(p => p.alive);
-  const total = sess.players.length;
+  const nonWatchers = sess.players.filter(p => !p.isWatcher);
+  const alive = nonWatchers.filter(p => p.alive);
+  const total = nonWatchers.length;
   // End if: ≤1 alive (standard), OR all alive players are bots (no humans left)
   const aliveHumans = alive.filter(p => !p.isAI);
   const ended = doMove && (
@@ -381,7 +382,7 @@ function tick(sess) {
     bcast(sess, {
       type: 'snake_over',
       winner,
-      scores: sess.players.map(p => ({ name: p.name, color: p.color, score: p.score, length: p.body.length })),
+      scores: sess.players.filter(p => !p.isWatcher).map(p => ({ name: p.name, color: p.color, score: p.score, length: p.body.length })),
     });
   }
 }
@@ -602,7 +603,7 @@ wss.on('connection', ws => {
       const target = sessions.get(+m.sessionId);
       if (!target) return send(ws, { type: 'snake_err', message: 'Session not found.' });
       if (target.gameOver) return send(ws, { type: 'snake_err', message: 'Game has ended.' });
-      if (target.players.length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
+      if (target.players.filter(p => !p.isWatcher).length >= MAX_PLAYERS) return send(ws, { type: 'snake_err', message: 'Session is full.' });
       sess = target;
       me = { ws, name, color: COLORS[sess.players.length % COLORS.length],
              dir: 'right', nextDir: 'right', body: [], alive: false,
@@ -614,7 +615,26 @@ wss.on('connection', ws => {
         bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
         send(ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
       } else {
-        // Mid-game: drop them in as a dead player; send full game state
+        // Mid-game join: spawn alive with INIT_LEN segments from center
+        const occ = occupiedSet(sess);
+        let spawnX = -1, spawnY = -1;
+        outer: for (let r = 0; r < Math.max(COLS, ROWS); r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const cx = Math.floor(COLS / 2) + dx;
+              const cy = Math.floor(ROWS / 2) + dy;
+              if (cx < 1 || cx >= COLS-1 || cy < 1 || cy >= ROWS-1) continue;
+              if (!occ.has(`${cx},${cy}`)) { spawnX = cx; spawnY = cy; break outer; }
+            }
+          }
+        }
+        if (spawnX < 0) return send(ws, { type: 'snake_err', message: 'No room to spawn.' });
+        me.alive = true;
+        me.dir = 'right'; me.nextDir = 'right';
+        me.body = [{ x: spawnX, y: spawnY }];
+        for (let i = 1; i < INIT_LEN; i++) me.body.push({ x: spawnX - i, y: spawnY });
+        spawnFood(sess);
         bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
         send(ws, {
           type: 'snake_start',
@@ -629,6 +649,34 @@ wss.on('connection', ws => {
           countdown: 0,
         });
       }
+
+    } else if (m.type === 'snake_observe') {
+      if (sess) return;
+      const name = String(m.name || '').trim().slice(0, 24);
+      if (!name) return;
+      const target = sessions.get(+m.sessionId);
+      if (!target) return send(ws, { type: 'snake_err', message: 'Session not found.' });
+      if (target.gameOver) return send(ws, { type: 'snake_err', message: 'Game has ended.' });
+      if (!target.started) return send(ws, { type: 'snake_err', message: 'Game not started yet.' });
+      sess = target;
+      me = { ws, name, isWatcher: true, color: '#888888',
+             dir: 'right', nextDir: 'right', body: [], alive: false,
+             score: 0, dizzy: 0, frozen: 0 };
+      sess.players.push(me);
+      bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+      send(ws, {
+        type: 'snake_start',
+        cols: COLS, rows: ROWS,
+        moveEvery: sess.moveEvery,
+        players: pubPlayers(sess),
+        snakes: sess.players.map(p => ({ body: p.body, alive: p.alive, dizzy: p.dizzy, frozen: p.frozen })),
+        food: sess.food,
+        poops: sess.poops,
+        cleaner: sess.cleaner,
+        elephant: sess.elephant,
+        countdown: 0,
+        isWatcher: true,
+      });
 
     } else if (m.type === 'snake_add_bot') {
       if (!sess || !me || sess.players[0] !== me || sess.started) return;
@@ -671,6 +719,12 @@ wss.on('connection', ws => {
   ws.on('close', () => {
     if (!sess) return;
     if (me) {
+      if (me.isWatcher) {
+        // Watchers are always removed immediately
+        sess.players = sess.players.filter(p => p !== me);
+        if (sess.started && !sess.gameOver) bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+        return;
+      }
       me.alive = false;
       if (!sess.started || sess.gameOver) {
         sess.players = sess.players.filter(p => p !== me);
@@ -690,18 +744,22 @@ wss.on('connection', ws => {
 
 // ── Session list API ──────────────────────────────────────────────────────────
 function getSessionList() {
-  return [...sessions.values()].filter(s => !s.gameOver).map(s => ({
-    id: s.id,
-    hostName: s.players[0] ? s.players[0].name : '?',
-    players: s.players.length,
-    maxPlayers: MAX_PLAYERS,
-    observers: s.obs.length,
-    canJoin: !s.gameOver && s.players.length < MAX_PLAYERS,
-    status: s.started ? 'playing' : 'waiting',
-    label: s.started
-      ? `${s.players.filter(p => p.alive).length} alive / ${s.players.length} total`
-      : `${s.players.length}/${MAX_PLAYERS} players`,
-  }));
+  return [...sessions.values()].filter(s => !s.gameOver).map(s => {
+    const nonWatchers = s.players.filter(p => !p.isWatcher);
+    return {
+      id: s.id,
+      hostName: s.players[0] ? s.players[0].name : '?',
+      players: nonWatchers.length,
+      maxPlayers: MAX_PLAYERS,
+      observers: s.obs.length,
+      canJoin: !s.gameOver && nonWatchers.length < MAX_PLAYERS,
+      canObserve: s.started && !s.gameOver,
+      status: s.started ? 'playing' : 'waiting',
+      label: s.started
+        ? `${nonWatchers.filter(p => p.alive).length} alive / ${nonWatchers.length} total`
+        : `${nonWatchers.length}/${MAX_PLAYERS} players`,
+    };
+  });
 }
 
 module.exports = { wss, getSessionList };

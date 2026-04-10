@@ -232,7 +232,8 @@ function handle(msg) {
       prevCleaner = null; cleanerMoveTime = 0;
       prevElephant = null; elephantMoveTime = 0;
       myIdx = msg.players.findIndex(p => p.name === myName);
-      if (myIdx >= 0) myDir = 'right';
+      isObs = msg.isWatcher === true || (myIdx >= 0 && !!msg.players[myIdx].isWatcher);
+      if (myIdx >= 0 && !isObs) myDir = 'right';
       prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
       lastTickTime = Date.now();
       initCanvas(msg.cols, msg.rows);
@@ -774,11 +775,12 @@ function renderScoreBar() {
     const sn = snakes[i];
     const alive = sn ? sn.alive : false;
     const len = sn ? sn.body.length : 0;
-    const canSave = !alive && iAmAlive && i !== myIdx && snakes[myIdx] && snakes[myIdx].body.length >= 2;
+    const watching = !!p.isWatcher;
+    const canSave = !watching && !alive && iAmAlive && i !== myIdx && snakes[myIdx] && snakes[myIdx].body.length >= 2;
     return `<div class="score-chip${alive ? '' : ' dead'}">
-      <span class="sc-dot" style="background:${p.color}"></span>
-      <span class="sc-name">${esc(p.name)}</span>
-      <span class="sc-val">${len}</span>
+      <span class="sc-dot" style="background:${watching ? '#555' : p.color}"></span>
+      <span class="sc-name">${esc(p.name)}${watching ? ' 👁' : (p.isAI ? ' 🤖' : '')}</span>
+      ${watching ? '' : `<span class="sc-val">${len}</span>`}
       ${canSave ? `<button class="save-btn" data-save-idx="${i}">💚 Save</button>` : ''}
     </div>`;
   }).join('');
@@ -1004,6 +1006,7 @@ function renderSessions(list) {
         <div class="std-sess-meta">${esc(s.label)} · ${s.status}</div>
       </div>
       ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">${s.status === 'playing' ? '▶ Join' : 'Join'}</button>` : ''}
+      ${s.canObserve ? `<button class="std-btn-obs" onclick="observeSession(${s.id})">👁 Watch</button>` : ''}
     </div>`).join('');
 }
 
@@ -1029,6 +1032,13 @@ function joinSession(id) {
   if (!name) return;
   stopPoll();
   connect(() => wsSend({ type: 'snake_join', name, sessionId: id }));
+}
+
+function observeSession(id) {
+  const name = getName();
+  if (!name) return;
+  stopPoll();
+  connect(() => wsSend({ type: 'snake_observe', name, sessionId: id }));
 }
 
 

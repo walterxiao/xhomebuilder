@@ -397,7 +397,9 @@ function spawnElephant(sess) {
   sess.elephant = { lx, ly, size, dir };
 
   // Pre-pick which positions along the travel axis will get a poop
-  const target   = 10 + Math.floor(Math.random() * 11); // 10–20
+  // Each growth level adds 3 to both bounds (size 1→10-20, size 2→13-23, … size 5→22-32)
+  const poopBonus = (size - 1) * 3;
+  const target   = (10 + poopBonus) + Math.floor(Math.random() * 11); // 10–20 + bonus
   const axisLen  = (dir === 'right' || dir === 'left') ? COLS : ROWS;
   const all      = Array.from({ length: axisLen }, (_, i) => i);
   for (let i = all.length - 1; i > 0; i--) {

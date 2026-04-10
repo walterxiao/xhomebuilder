@@ -216,8 +216,6 @@ function handle(msg) {
       gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
       prevCleaner = null; cleanerMoveTime = 0;
       prevElephant = null; elephantMoveTime = 0;
-      // Init score tracking for eat-sound detection
-      msg.players.forEach((p, i) => { p._score = msg.snakes[i]?.score || 0; });
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
@@ -284,18 +282,12 @@ function handle(msg) {
         }
       }
 
-      // Detect food eaten: score increase on any snake
+      // Detect food eaten: snake body grew longer than prev tick
       for (let i = 0; i < gameState.snakes.length; i++) {
-        const prev = prevSnakes[i], curr = gameState.snakes[i];
-        if (!prev || !curr) continue;
-        const prevScore = (gameState.players[i] || {})._score || 0;
-        const currScore = (msg.snakes[i] || {}).score || 0;
-        if (currScore > prevScore) SFX.eat();
-        if (gameState.players[i]) gameState.players[i]._score = currScore;
+        const prev = prevSnakes[i], curr = msg.snakes[i];
+        if (!prev || !curr || !curr.alive) continue;
+        if (curr.body.length > prev.body.length) SFX.eat();
       }
-
-      // Detect new poops dropped by elephant (food array length may change via elephant)
-      // (handled via elephant appearance below)
       renderScoreBar();
       break;
     }

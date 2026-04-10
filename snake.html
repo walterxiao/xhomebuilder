@@ -216,6 +216,8 @@ function handle(msg) {
       gameState = { cols: msg.cols, rows: msg.rows, players: msg.players, snakes: msg.snakes, food: msg.food, poops: msg.poops || [], cleaner: msg.cleaner || null, elephant: msg.elephant || null };
       prevCleaner = null; cleanerMoveTime = 0;
       prevElephant = null; elephantMoveTime = 0;
+      // Init score tracking for eat-sound detection
+      msg.players.forEach((p, i) => { p._score = msg.snakes[i]?.score || 0; });
       myIdx = msg.players.findIndex(p => p.name === myName);
       if (myIdx >= 0) myDir = 'right';
       prevSnakes = msg.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
@@ -247,7 +249,7 @@ function handle(msg) {
         prevElephant = { ...gameState.elephant };
         elephantMoveTime = Date.now();
       }
-      if (!gameState.elephant && msg.elephant) elephantMoveTime = Date.now();
+      if (!gameState.elephant && msg.elephant) { elephantMoveTime = Date.now(); SFX.elephant(); }
       gameState.elephant = msg.elephant !== undefined ? msg.elephant : gameState.elephant;
 
       // Snake positions only update on movement ticks (every 3rd fast tick = 300ms)
@@ -255,7 +257,7 @@ function handle(msg) {
       prevSnakes = gameState.snakes.map(s => ({ ...s, body: s.body.map(b => ({ ...b })) }));
       gameState.snakes = msg.snakes;
       lastTickTime = Date.now();
-      // Detect newly-dizzy snakes → spawn collision animation
+      // Detect newly-dizzy snakes → spawn collision animation + sounds
       for (let i = 0; i < gameState.snakes.length; i++) {
         const prev = prevSnakes[i], curr = gameState.snakes[i];
         if (!prev || !curr || curr.dizzy === 0 || prev.dizzy > 0) continue;
@@ -273,7 +275,27 @@ function handle(msg) {
           return { x: seg.x + 0.5, y: seg.y + 0.5, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, color };
         });
         collisionAnims.push({ snakeIdx: i, bounceDir: { x: -dir.x, y: -dir.y }, startTime: lastTickTime, flyParts });
+        // Sound: my snake = louder, others = softer
+        if (i === myIdx) SFX.collision();
+        else SFX.poop(); // lighter thud for other snakes
+        // Death sound if snake just died
+        if (!curr.alive && prev.alive) {
+          setTimeout(() => i === myIdx ? SFX.die() : SFX.poop(), 120);
+        }
       }
+
+      // Detect food eaten: score increase on any snake
+      for (let i = 0; i < gameState.snakes.length; i++) {
+        const prev = prevSnakes[i], curr = gameState.snakes[i];
+        if (!prev || !curr) continue;
+        const prevScore = (gameState.players[i] || {})._score || 0;
+        const currScore = (msg.snakes[i] || {}).score || 0;
+        if (currScore > prevScore) SFX.eat();
+        if (gameState.players[i]) gameState.players[i]._score = currScore;
+      }
+
+      // Detect new poops dropped by elephant (food array length may change via elephant)
+      // (handled via elephant appearance below)
       renderScoreBar();
       break;
     }
@@ -691,11 +713,92 @@ function showGameOver(msg) {
       <span class="over-score">${s.score} food</span>
     </div>`).join('');
   document.getElementById('restart-btn').style.display = isHost ? 'block' : 'none';
+  // Play win or game-over sound
+  if (msg.winner && msg.winner === myName) SFX.win();
+  else SFX.gameOver();
   showScreen('over');
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
 const OPP = { up:'down', down:'up', left:'right', right:'left' };
+
+// ── Sound engine (Web Audio API, no files needed) ─────────────────────────────
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function playTone({ freq = 440, freq2, type = 'sine', gain = 0.3, duration = 0.12,
+                    attack = 0.005, decay = 0.06, freqDecay = false } = {}) {
+  try {
+    const ctx  = getAudioCtx();
+    const osc  = ctx.createOscillator();
+    const amp  = ctx.createGain();
+    osc.connect(amp);
+    amp.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    if (freq2) osc.frequency.exponentialRampToValueAtTime(freq2, ctx.currentTime + duration);
+    if (freqDecay) osc.frequency.exponentialRampToValueAtTime(freq * 0.3, ctx.currentTime + duration);
+    amp.gain.setValueAtTime(0, ctx.currentTime);
+    amp.gain.linearRampToValueAtTime(gain, ctx.currentTime + attack);
+    amp.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration + 0.02);
+  } catch {}
+}
+
+function playChord(freqs, opts = {}) {
+  freqs.forEach(f => playTone({ ...opts, freq: f, gain: (opts.gain || 0.25) / freqs.length }));
+}
+
+const SFX = {
+  countdownBeep(n) {
+    // Higher pitch for lower numbers
+    const freq = n === 0 ? 880 : 330 + (5 - n) * 40;
+    playTone({ freq, type: 'square', gain: 0.18, duration: n === 0 ? 0.35 : 0.18, attack: 0.005 });
+    if (n === 0) playTone({ freq: freq * 1.5, type: 'sine', gain: 0.12, duration: 0.35 });
+  },
+  go() {
+    // Rising chord sweep
+    playChord([523, 659, 784], { type: 'sine', gain: 0.45, duration: 0.5, attack: 0.01 });
+  },
+  eat() {
+    playTone({ freq: 660, freq2: 1100, type: 'sine', gain: 0.2, duration: 0.1, attack: 0.003 });
+  },
+  collision() {
+    // Thud — low noise burst
+    playTone({ freq: 120, freq2: 40, type: 'sawtooth', gain: 0.35, duration: 0.2, attack: 0.002 });
+    playTone({ freq: 80, type: 'square', gain: 0.2, duration: 0.15, attack: 0.002 });
+  },
+  die() {
+    // Descending slide
+    playTone({ freq: 400, freq2: 60, type: 'sawtooth', gain: 0.3, duration: 0.6, attack: 0.01 });
+  },
+  gameOver() {
+    // Sad wah-wah
+    [0, 0.18, 0.36].forEach(delay => {
+      setTimeout(() => playTone({ freq: 220, freq2: 110, type: 'sawtooth', gain: 0.25, duration: 0.25, attack: 0.01 }), delay * 1000);
+    });
+  },
+  win() {
+    // Victory fanfare
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((f, i) => setTimeout(() => playTone({ freq: f, type: 'sine', gain: 0.28, duration: 0.18, attack: 0.005 }), i * 120));
+    setTimeout(() => playChord([523, 659, 784, 1047], { type: 'sine', gain: 0.4, duration: 0.5, attack: 0.01 }), notes.length * 120);
+  },
+  elephant() {
+    // Low rumble
+    playTone({ freq: 55, freq2: 80, type: 'sawtooth', gain: 0.22, duration: 0.4, attack: 0.05 });
+    playTone({ freq: 110, type: 'sine', gain: 0.1, duration: 0.3, attack: 0.05 });
+  },
+  poop() {
+    // Squelch
+    playTone({ freq: 200, freq2: 80, type: 'sine', gain: 0.18, duration: 0.15, attack: 0.005 });
+  },
+};
 
 let countdownActive = false;
 
@@ -712,11 +815,13 @@ function showCountdown(secs) {
       num.style.transform = 'scale(1)';
       num.style.opacity   = '0.9';
     });
+    SFX.countdownBeep(secs);
   } else {
     num.textContent = 'GO!';
     num.style.color = '#44ee88';
     num.style.transform = 'scale(1.4)';
     num.style.opacity = '1';
+    SFX.go();
     setTimeout(() => {
       overlay.style.display = 'none';
       num.style.color = '#d4af37';

@@ -32,7 +32,7 @@ function bcast(sess, o) {
 }
 
 function pubPlayers(sess) {
-  return sess.players.map(p => ({ name: p.name, color: p.color }));
+  return sess.players.map(p => ({ name: p.name, color: p.color, isAI: !!p.isAI }));
 }
 
 // ── Session factory ───────────────────────────────────────────────────────────
@@ -129,6 +129,60 @@ function applyCollision(p) {
   if (p.body.length === 0) p.alive = false;
 }
 
+// ── AI bot direction chooser (BFS to nearest food) ───────────────────────────
+function aiChooseDir(p, sess) {
+  if (!p.alive || p.frozen > 0) return p.nextDir;
+  const head = p.body[0];
+  const opp  = OPPOSITE[p.dir];
+
+  // Build obstacle set: all snake bodies + poops + elephant footprint
+  const obs = new Set();
+  for (const pl of sess.players) for (const seg of pl.body) obs.add(`${seg.x},${seg.y}`);
+  for (const po of sess.poops) obs.add(`${po.x},${po.y}`);
+  if (sess.elephant) {
+    const { lx, ly, size } = sess.elephant;
+    for (let ex = lx; ex < lx + size; ex++)
+      for (let ey = ly; ey < ly + size; ey++)
+        obs.add(`${ex},${ey}`);
+  }
+
+  const foodSet = new Set(sess.food.map(f => `${f.x},${f.y}`));
+
+  // BFS from head to nearest food
+  const visited = new Set([`${head.x},${head.y}`]);
+  const queue   = [{ x: head.x, y: head.y, firstDir: null }];
+  let bestDir   = null;
+
+  bfs: while (queue.length) {
+    const { x, y, firstDir } = queue.shift();
+    for (const [d, [dx, dy]] of Object.entries(DIRS)) {
+      if (!firstDir && d === opp) continue; // can't reverse at start
+      const nx = x + dx, ny = y + dy;
+      const k  = `${nx},${ny}`;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+      if (obs.has(k) || visited.has(k)) continue;
+      const fd = firstDir || d;
+      if (foodSet.has(k)) { bestDir = fd; break bfs; }
+      visited.add(k);
+      queue.push({ x: nx, y: ny, firstDir: fd });
+    }
+  }
+  if (bestDir) return bestDir;
+
+  // Fallback: pick any safe non-reversing direction (shuffled for variety)
+  const dirs = Object.keys(DIRS).filter(d => d !== opp);
+  for (let i = dirs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+  }
+  for (const d of dirs) {
+    const [dx, dy] = DIRS[d];
+    const nx = head.x + dx, ny = head.y + dy;
+    if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && !obs.has(`${nx},${ny}`)) return d;
+  }
+  return p.dir; // completely boxed in
+}
+
 // ── Game tick ─────────────────────────────────────────────────────────────────
 function tick(sess) {
   sess.tickCount++;
@@ -149,6 +203,11 @@ function tick(sess) {
   let autoPooped = false;
 
   if (doMove) {
+    // 0. AI bots choose next direction
+    for (const p of sess.players) {
+      if (p.isAI && p.alive) p.nextDir = aiChooseDir(p, sess);
+    }
+
     // 1. Apply direction and compute new heads (frozen snakes don't move)
     const newHeads = [];
     for (const p of sess.players) {
@@ -512,6 +571,18 @@ wss.on('connection', ws => {
       sess = target;
       sess.obs.push({ ws, name });
       send(ws, { type: 'snake_observing', sessionId: sess.id });
+
+    } else if (m.type === 'snake_add_bot') {
+      if (!sess || !me || sess.players[0] !== me || sess.started) return;
+      if (sess.players.length >= MAX_PLAYERS) return;
+      const botNum = sess.players.filter(p => p.isAI).length + 1;
+      const fakeWs = { readyState: 1, send: () => {} };
+      const bot = { ws: fakeWs, name: `Bot ${botNum}`, isAI: true,
+        color: COLORS[sess.players.length % COLORS.length],
+        dir: 'right', nextDir: 'right', body: [], alive: false, score: 0, dizzy: 0, frozen: 0 };
+      sess.players.push(bot);
+      bcast(sess, { type: 'snake_lobby', players: pubPlayers(sess) });
+      send(me.ws, { type: 'snake_waiting', sessionId: sess.id, players: pubPlayers(sess) });
 
     } else if (m.type === 'snake_start') {
       if (!sess || !me || sess.players[0] !== me || sess.started) return;

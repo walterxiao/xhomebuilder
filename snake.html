@@ -122,6 +122,7 @@ body{background:#0d1a0d;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
         <button class="speed-btn active" data-speed="normal">▶ Normal</button>
         <button class="speed-btn" data-speed="faster">⚡ Faster</button>
       </div>
+      <button class="btn-ghost" id="add-bot-btn" style="display:none">🤖 Add Bot</button>
       <button class="btn-green" id="start-btn" style="display:none">▶ Start Game</button>
       <button class="btn-ghost" id="leave-btn">Leave</button>
     </div>
@@ -329,12 +330,13 @@ function renderWaiting(players) {
     <div class="wait-player">
       <span class="wait-dot" style="background:${p.color}"></span>
       ${i === 0 ? '<span class="wait-crown">★</span>' : ''}
-      <span>${esc(p.name)}${p.name === myName ? ' (you)' : ''}</span>
+      <span>${esc(p.name)}${p.name === myName ? ' (you)' : ''}${p.isAI ? ' 🤖' : ''}</span>
     </div>`).join('');
 
   const isH = players.length > 0 && players[0].name === myName;
   document.getElementById('start-btn').style.display = isH ? 'block' : 'none';
   document.getElementById('speed-row').classList.toggle('visible', isH);
+  document.getElementById('add-bot-btn').style.display = (isH && players.length < 4) ? 'block' : 'none';
   document.getElementById('wait-msg').textContent =
     players.length < 2 ? 'Need at least 2 players to start…' : isH ? 'Ready to start!' : 'Waiting for host to start…';
 }
@@ -1014,6 +1016,7 @@ document.querySelectorAll('[data-speed]').forEach(btn =>
 document.querySelectorAll('[data-speed-over]').forEach(btn =>
   btn.addEventListener('click', () => setSpeed(btn.dataset.speedOver)));
 
+document.getElementById('add-bot-btn').addEventListener('click', () => wsSend({ type: 'snake_add_bot' }));
 document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'snake_start', speed: selectedSpeed }));
 
 document.getElementById('leave-btn').addEventListener('click', returnToLobby);

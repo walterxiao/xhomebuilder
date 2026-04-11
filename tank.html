@@ -123,6 +123,7 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div class="screen-title">Waiting Room</div>
     <div class="screen-sub" id="waiting-sub">Waiting for players…</div>
     <div class="player-list" id="player-list"></div>
+    <button class="btn-secondary" id="btn-add-ai" style="display:none">+ Add AI Bot</button>
     <button class="btn-primary" id="btn-start" disabled>Start Game</button>
     <div class="screen-sub" id="obs-hint" style="display:none">You are watching</div>
     <button class="btn-link" id="btn-leave">Leave</button>
@@ -365,9 +366,12 @@ function updateWaitingRoom(msg) {
   for (let i = 0; i < MAX; i++) {
     const row = document.createElement('div');
     if (i < players.length) {
+      const p = players[i];
+      const aiTag = p.isAI ? '<span style="font-size:.72rem;color:#aaa;margin-left:4px">🤖 AI</span>' : '';
+      const hostTag = i === 0 && !p.isAI ? ' <span style="font-size:.72rem;color:#888">(host)</span>' : '';
       row.className = 'player-row';
-      row.innerHTML = `<div class="player-dot" style="background:${esc(players[i].color)}"></div>
-        <div class="player-name-w">${esc(players[i].name)}${i === 0 ? ' (host)' : ''}</div>`;
+      row.innerHTML = `<div class="player-dot" style="background:${esc(p.color)}"></div>
+        <div class="player-name-w">${esc(p.name)}${aiTag}${hostTag}</div>`;
     } else {
       row.className = 'player-row empty';
       row.innerHTML = `<div class="player-dot" style="background:#222"></div>
@@ -377,6 +381,8 @@ function updateWaitingRoom(msg) {
   }
   if (isHost) {
     document.getElementById('btn-start').disabled = players.length < 2;
+    const addAiBtn = document.getElementById('btn-add-ai');
+    addAiBtn.style.display = players.length < MAX ? '' : 'none';
   }
 }
 
@@ -388,8 +394,9 @@ function buildHud() {
     const div = document.createElement('div');
     div.className = 'hud-player';
     div.id = `hud-${t.name}`;
+    const label = t.isAI ? `🤖 ${esc(t.name)}` : esc(t.name);
     div.innerHTML = `<div class="hud-dot" style="background:${esc(t.color)}"></div>
-      <div class="hud-name">${esc(t.name)}</div>
+      <div class="hud-name">${label}</div>
       <div class="hud-hp" id="hud-hp-${t.name}">${hpHtml(t.hp, t.alive)}</div>`;
     hud.appendChild(div);
   }
@@ -613,6 +620,10 @@ function doObserve() {
   isObs = true;
   wsSend({ type: 'tank_join', name: myName }); // server handles overflow → observe
 }
+
+document.getElementById('btn-add-ai').onclick = () => {
+  wsSend({ type: 'tank_add_ai' });
+};
 
 document.getElementById('btn-start').onclick = () => {
   wsSend({ type: 'tank_start' });

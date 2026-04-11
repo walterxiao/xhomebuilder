@@ -23,13 +23,14 @@ const SPAWNS = [
   { x: 90,      y: H - 90,  angle: 45  },
   { x: W - 90,  y: H - 90,  angle: 315 },
 ];
-const COLORS = ['#4fc3f7', '#ef5350', '#66bb6a', '#ffa726'];
+const COLORS    = ['#4fc3f7', '#ef5350', '#66bb6a', '#ffa726'];
+const BOT_NAMES = ['Bot Alpha', 'Bot Beta', 'Bot Gamma', 'Bot Delta'];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const send  = (ws, o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
+const send  = (ws, o) => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
 function bcast(s, o) {
   const m = JSON.stringify(o);
-  for (const p of s.players) if (p.ws.readyState === 1) p.ws.send(m);
+  for (const p of s.players) if (p.ws && p.ws.readyState === 1) p.ws.send(m);
   for (const ob of s.obs)    if (ob.ws.readyState === 1) ob.ws.send(m);
 }
 const deg2rad = d => d * Math.PI / 180;
@@ -54,7 +55,7 @@ function mkSess() {
 function lobbyData(s) {
   return {
     type: 'tank_lobby',
-    players: s.players.map(p => ({ name: p.name, color: p.color })),
+    players: s.players.map(p => ({ name: p.name, color: p.color, isAI: !!p.isAI })),
     obs: s.obs.length,
     state: s.state,
     sid: s.id,
@@ -82,7 +83,7 @@ function startGame(s) {
   bcast(s, {
     type: 'tank_start',
     players: s.players.map(p => ({
-      name: p.name, color: p.color,
+      name: p.name, color: p.color, isAI: !!p.isAI,
       x: p.x, y: p.y, angle: p.angle, hp: p.hp,
     })),
     W, H,
@@ -91,10 +92,78 @@ function startGame(s) {
   s.interval = setInterval(() => tick(s), TICK_MS);
 }
 
+// ── AI ────────────────────────────────────────────────────────────────────────
+function computeAIInput(s, p, now) {
+  if (!p.ai) p.ai = { jitter: 0, jitterTime: 0 };
+  const ai = p.ai;
+
+  // Randomise aim jitter every ~1.8 s to avoid perfect accuracy
+  if (now - ai.jitterTime > 1800) {
+    ai.jitter = (Math.random() - 0.5) * 40; // ±20°
+    ai.jitterTime = now;
+  }
+
+  // Find nearest alive enemy
+  let target = null, minDist = Infinity;
+  for (const other of s.players) {
+    if (other === p || !other.alive) continue;
+    const d = Math.hypot(other.x - p.x, other.y - p.y);
+    if (d < minDist) { minDist = d; target = other; }
+  }
+
+  if (!target) {
+    p.input = { up: false, down: false, left: false, right: false, fire: false };
+    return;
+  }
+
+  const dx = target.x - p.x, dy = target.y - p.y;
+  const targetAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+  const aimAngle    = (targetAngle + ai.jitter + 360) % 360;
+
+  let diff = aimAngle - p.angle;
+  while (diff >  180) diff -= 360;
+  while (diff < -180) diff += 360;
+
+  // Wall avoidance — steer toward arena centre when near a wall
+  const margin = 65;
+  const nearWall = p.x < margin || p.x > W - margin || p.y < margin || p.y > H - margin;
+  if (nearWall) {
+    const cx = (Math.atan2(W / 2 - p.x, -(H / 2 - p.y)) * 180 / Math.PI + 360) % 360;
+    let cd = cx - p.angle;
+    while (cd >  180) cd -= 360;
+    while (cd < -180) cd += 360;
+    p.input.left  = cd < -2;
+    p.input.right = cd > 2;
+    p.input.up    = true;
+    p.input.down  = false;
+    p.input.fire  = false;
+    return;
+  }
+
+  // Rotate toward jittered aim angle
+  p.input.left  = diff < -2;
+  p.input.right = diff > 2;
+
+  // Advance when far away, back up when too close
+  p.input.up   = minDist > 130;
+  p.input.down = minDist < 75;
+
+  // Fire only when barrel is truly on-target (ignore jitter for firing check)
+  let aimDiff = targetAngle - p.angle;
+  while (aimDiff >  180) aimDiff -= 360;
+  while (aimDiff < -180) aimDiff += 360;
+  p.input.fire = Math.abs(aimDiff) < 18;
+}
+
 // ── Game tick ─────────────────────────────────────────────────────────────────
 function tick(s) {
   if (s.state !== 'playing') return;
   const now = Date.now();
+
+  // AI input (must run before the movement pass)
+  for (const p of s.players) {
+    if (p.isAI && p.alive) computeAIInput(s, p, now);
+  }
 
   // Move tanks
   for (const p of s.players) {
@@ -260,6 +329,20 @@ wss.on('connection', ws => {
       });
       bcast(sess, lobbyData(sess));
 
+    // ── add AI bot ────────────────────────────────────────────────────────
+    } else if (msg.type === 'tank_add_ai') {
+      if (!sess || !me || sess.state !== 'waiting') return;
+      if (sess.players[0] !== me) return; // host only
+      if (sess.players.length >= MAX_PLAYERS) return;
+      const botCount = sess.players.filter(p => p.isAI).length;
+      const botName  = BOT_NAMES[botCount] || `Bot ${botCount + 1}`;
+      const bot = mkPlayer(null, botName, sess.players.length);
+      bot.isAI = true;
+      bot.ai   = { jitter: 0, jitterTime: 0 };
+      sess.players.push(bot);
+      if (sess.players.length >= MAX_PLAYERS) openSess = null;
+      bcast(sess, lobbyData(sess));
+
     // ── start game ────────────────────────────────────────────────────────
     } else if (msg.type === 'tank_start') {
       if (!sess || !me || sess.state !== 'waiting') return;
@@ -283,7 +366,11 @@ wss.on('connection', ws => {
       if (sess.interval) { clearInterval(sess.interval); sess.interval = null; }
       sess.state = 'waiting';
       sess.bullets = [];
-      for (const p of sess.players) { p.input = { up:false,down:false,left:false,right:false,fire:false }; p.vel = 0; }
+      for (const p of sess.players) {
+        p.input = { up: false, down: false, left: false, right: false, fire: false };
+        p.vel = 0;
+        if (p.isAI && p.ai) p.ai.jitterTime = 0;
+      }
       if (!openSess) openSess = sess;
       bcast(sess, { type: 'tank_rematch' });
       bcast(sess, lobbyData(sess));
@@ -298,15 +385,20 @@ wss.on('connection', ws => {
       return;
     }
     if (me) {
+      // Remove this human player and any AI bots if no humans remain
       sess.players = sess.players.filter(p => p !== me);
       if (sess.interval) { clearInterval(sess.interval); sess.interval = null; }
       sess.bullets = [];
 
-      if (!sess.players.length && !sess.obs.length) {
+      const humanPlayers = sess.players.filter(p => !p.isAI);
+      if (!humanPlayers.length && !sess.obs.length) {
+        // No humans left — tear down completely
         sessions.delete(sess.id);
         if (openSess === sess) openSess = null;
         return;
       }
+      // Also drop all AI bots if no humans remain in session (e.g. all quit)
+      if (!humanPlayers.length) sess.players = [];
 
       if (sess.state === 'playing') {
         sess.state = 'waiting';
@@ -333,8 +425,13 @@ function mkPlayer(ws, name, idx) {
 function getSessionList() {
   const list = [];
   for (const [, sess] of sessions) {
-    const cur  = sess.players.length;
-    const host = sess.players[0];
+    const cur     = sess.players.length;
+    const humans  = sess.players.filter(p => !p.isAI).length;
+    const bots    = cur - humans;
+    const host    = sess.players.find(p => !p.isAI);
+    const label   = bots > 0
+      ? `${humans} human${humans !== 1 ? 's' : ''} + ${bots} AI`
+      : `${cur}/${MAX_PLAYERS} players`;
     list.push({
       id: sess.id,
       hostName: host ? host.name : '?',
@@ -344,7 +441,7 @@ function getSessionList() {
       canJoin: cur < MAX_PLAYERS && sess.state === 'waiting',
       canObserve: sess.state === 'playing',
       status: sess.state,
-      label: `${cur}/${MAX_PLAYERS} players`,
+      label,
     });
   }
   return list.filter(s => s.status !== 'game_over');

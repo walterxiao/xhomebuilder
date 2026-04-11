@@ -30,7 +30,7 @@ const POWERUP_PICKUP_R = 22;       // pickup collision radius
 const POWERUP_MAX      = 3;        // max simultaneous powerups on map
 
 // Amend (repair)
-const AMEND_INTERVAL = 4000;      // ms to regenerate 1 HP while amending
+const AMEND_INTERVAL = 10000;     // ms to regenerate 1 HP while amending (progress pauses, not resets)
 
 // Spawn corners, facing inward (angle = degrees, 0 = up, clockwise)
 const SPAWNS = [
@@ -254,7 +254,7 @@ function computeAIInput(s, p, now) {
   const margin = 65;
   const nearWall = p.x < margin || p.x > W - margin || p.y < margin || p.y > H - margin;
   if (nearWall) {
-    if (ai.state === 'amending') { p.amending = false; p.amendAcc = 0; ai.state = 'aggressive'; }
+    if (ai.state === 'amending') { p.amending = false; ai.state = 'aggressive'; }
     const cx = (Math.atan2(W / 2 - p.x, -(H / 2 - p.y)) * 180 / Math.PI + 360) % 360;
     let cd = cx - p.angle;
     while (cd >  180) cd -= 360;
@@ -273,7 +273,7 @@ function computeAIInput(s, p, now) {
 
   // Cancel amend: HP full, enemy too close, or stuck escape fires
   if (ai.state === 'amending' && (p.hp >= HP_MAX || minDist < 150)) {
-    p.amending = false; p.amendAcc = 0;
+    p.amending = false;
     ai.state = 'aggressive';
     ai.aggressiveUntil = now + 5000; // don't retreat again for 5 s
   }
@@ -281,7 +281,7 @@ function computeAIInput(s, p, now) {
   // Retreating → amending when far enough from enemy and away from walls
   if (ai.state === 'retreating' && minDist > 270) {
     ai.state = 'amending';
-    p.amending = true; p.amendAcc = 0;
+    p.amending = true;  // resume from existing amendAcc
   }
 
   // Aggressive → retreating: ~25%/s chance when HP ≤ 2, after cooldown
@@ -291,7 +291,7 @@ function computeAIInput(s, p, now) {
 
   // ── Stuck escape maneuver (interrupts retreat/aggressive, not amend) ─────
   if (now < ai.avoidUntil) {
-    if (ai.state === 'amending') { p.amending = false; p.amendAcc = 0; ai.state = 'aggressive'; }
+    if (ai.state === 'amending') { p.amending = false; ai.state = 'aggressive'; }
     const sideAngle = (p.angle + ai.avoidDir * 90 + 360) % 360;
     let sd = sideAngle - p.angle;
     while (sd >  180) sd -= 360;
@@ -414,8 +414,7 @@ function tick(s) {
       const wantsToMove = p.input.up || p.input.down
         || (typeof p.input.joyAngle === 'number' && p.input.joyMag > 0.15);
       if (wantsToMove) {
-        p.amending = false;
-        p.amendAcc = 0;
+        p.amending = false;  // progress preserved in p.amendAcc
         bcast(s, { type: 'tank_amend_cancel', name: p.name });
       } else {
         p.amendAcc += TICK_MS;
@@ -589,7 +588,7 @@ function tick(s) {
       powerupType: p.powerupType || null,
       powerupEnd: p.powerupEnd,
       amending: !!p.amending,
-      amendProgress: p.amending ? Math.min(1, (p.amendAcc || 0) / AMEND_INTERVAL) : 0,
+      amendProgress: Math.min(1, (p.amendAcc || 0) / AMEND_INTERVAL),
     })),
     bullets: s.bullets.map(b => ({ x: Math.round(b.x), y: Math.round(b.y) })),
     powerups: s.powerups,
@@ -763,8 +762,7 @@ wss.on('connection', ws => {
     // ── toggle amend (repair) ─────────────────────────────────────────────
     } else if (msg.type === 'tank_amend') {
       if (!me || sess.state !== 'playing' || !me.alive) return;
-      me.amending = !me.amending;
-      if (!me.amending) me.amendAcc = 0;
+      me.amending = !me.amending;  // amendAcc preserved so progress resumes on re-activation
 
     // ── set map layout ────────────────────────────────────────────────────
     } else if (msg.type === 'tank_set_layout') {

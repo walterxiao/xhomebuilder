@@ -315,15 +315,10 @@ function handle(msg) {
         const amendBar = document.getElementById('amend-bar');
         if (myT && myT.alive) {
           amendBtn.disabled = false;
-          if (myT.amending) {
-            amendBtn.classList.add('active');
-            amendBtn.textContent = 'CANCEL';
-            amendBar.style.width = Math.round((myT.amendProgress || 0) * 100) + '%';
-          } else {
-            amendBtn.classList.remove('active');
-            amendBtn.textContent = 'AMEND';
-            amendBar.style.width = '0%';
-          }
+          amendBtn.classList.toggle('active', myT.amending);
+          amendBtn.textContent = myT.amending ? 'CANCEL' : 'AMEND';
+          // Bar always shows accumulated progress so player sees it even when paused
+          amendBar.style.width = Math.round((myT.amendProgress || 0) * 100) + '%';
         } else {
           amendBtn.disabled = true;
           amendBtn.classList.remove('active');
@@ -542,11 +537,12 @@ function powerupHtml(type, end) {
 }
 
 function amendHudHtml(t) {
-  if (!t.amending || !t.alive) return '';
+  if (!t.alive || !(t.amending || t.amendProgress > 0)) return '';
   const pct = Math.round((t.amendProgress || 0) * 100);
-  return `<span style="font-size:.65rem;color:#44bb60;margin-left:3px">🔧</span>`
+  const col = t.amending ? '#44bb60' : '#2a6a3a';  // brighter when active, dim when paused
+  return `<span style="font-size:.65rem;color:${col};margin-left:3px">🔧</span>`
        + `<span style="display:inline-block;width:18px;height:4px;background:#0f1a12;border-radius:3px;vertical-align:middle;margin-left:2px">`
-       + `<span style="display:block;width:${pct}%;height:100%;background:#44bb60;border-radius:3px"></span></span>`;
+       + `<span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
 }
 
 function updateHud() {

@@ -97,9 +97,9 @@ function computeAIInput(s, p, now) {
   if (!p.ai) p.ai = { jitter: 0, jitterTime: 0 };
   const ai = p.ai;
 
-  // Randomise aim jitter every ~1.8 s to avoid perfect accuracy
-  if (now - ai.jitterTime > 1800) {
-    ai.jitter = (Math.random() - 0.5) * 40; // ±20°
+  // Randomise aim jitter every ~3 s — holds wrong angle longer
+  if (now - ai.jitterTime > 3000) {
+    ai.jitter = (Math.random() - 0.5) * 70; // ±35°
     ai.jitterTime = now;
   }
 
@@ -144,15 +144,15 @@ function computeAIInput(s, p, now) {
   p.input.left  = diff < -2;
   p.input.right = diff > 2;
 
-  // Advance when far away, back up when too close
-  p.input.up   = minDist > 130;
-  p.input.down = minDist < 75;
+  // Advance only when quite far, hold position at mid-range, back up when close
+  p.input.up   = minDist > 220;
+  p.input.down = minDist < 110;
 
-  // Fire only when barrel is truly on-target (ignore jitter for firing check)
+  // Fire only when well on-target (ignore jitter for firing check)
   let aimDiff = targetAngle - p.angle;
   while (aimDiff >  180) aimDiff -= 360;
   while (aimDiff < -180) aimDiff += 360;
-  p.input.fire = Math.abs(aimDiff) < 18;
+  p.input.fire = Math.abs(aimDiff) < 10;
 }
 
 // ── Game tick ─────────────────────────────────────────────────────────────────

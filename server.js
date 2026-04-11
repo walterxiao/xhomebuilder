@@ -13,6 +13,7 @@ const blockstack = require('./games/blockstack');
 const raiden     = require('./games/raiden');
 const gofish     = require('./games/gofish');
 const snake      = require('./games/snake');
+const tank       = require('./games/tank');
 const stats      = require('./stats');
 
 // ── Play-count tracking ───────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ const GAME_START_MSGS = [
   [blockstack, 'blockstack', ['start']],
   [raiden,     'raiden',     ['start']],
   [gofish,     'gofish',     ['start']],
+  [tank,       'tank',       ['tank_create']],
 ];
 for (const [mod, game, types] of GAME_START_MSGS) {
   mod.wss.on('connection', ws => {
@@ -52,6 +54,7 @@ const PAGES = {
   '/blockstack': 'blockstack.html',
   '/raiden':     'raiden.html',
   '/gofish':     'gofish.html',
+  '/tank':       'tank.html',
 };
 
 
@@ -69,6 +72,7 @@ const httpServer = http.createServer((req, res) => {
     '/api/raiden/sessions':     () => raiden.getSessionList(),
     '/api/gofish/sessions':     () => gofish.getSessionList(),
     '/api/snake/sessions':      () => snake.getSessionList(),
+    '/api/tank/sessions':       () => tank.getSessionList(),
   };
   if (urlPath === '/api/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -133,6 +137,10 @@ httpServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/snake') {
     snake.wss.handleUpgrade(req, socket, head, ws => {
       snake.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/tank') {
+    tank.wss.handleUpgrade(req, socket, head, ws => {
+      tank.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

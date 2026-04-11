@@ -123,6 +123,7 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div class="screen-sub" id="waiting-sub">Waiting for players…</div>
     <div class="player-list" id="player-list"></div>
     <button class="btn-secondary" id="btn-add-ai" style="display:none">+ Add AI Bot</button>
+    <button class="btn-secondary" id="btn-layout" style="display:none">Map: Random ▶</button>
     <button class="btn-primary" id="btn-start" disabled>Start Game</button>
     <div class="screen-sub" id="obs-hint" style="display:none">You are watching</div>
     <button class="btn-link" id="btn-leave">Leave</button>
@@ -165,11 +166,17 @@ let gameW = 800, gameH = 560;
 let tanks = [];         // { name, color, x, y, angle, turretAngle, hp, alive, heat, overheated }
 let bullets = [];       // { x, y }
 let obstacles = [];     // { id, x, y, w, h, hp }
+let powerups  = [];     // { id, x, y, type }
 let colorMap = {};      // name → color
 const overheatEnd = {}; // name → timestamp
 const smokes  = [];     // smoke particles
 const sparks  = [];     // hit spark particles { x, y, vx, vy, life, decay, r, rgb }
 const rings   = [];     // hit ring effects    { x, y, r, maxR, life, rgb }
+const tracks  = [];     // tread marks         { x, y, angle, life }
+const mflash  = [];     // muzzle flashes      { x, y, rad, life }
+const prevPos = {};     // name → {x,y,angle} for track emission
+let shakeUntil = 0, shakeAmp = 0;
+const PU_DURATION = 8000; // keep in sync with server POWERUP_DURATION
 
 // Input state
 const keys = { up: false, down: false, left: false, right: false, fire: false };
@@ -244,6 +251,7 @@ function handle(msg) {
       if (msg.state === 'playing' && msg.players) {
         tanks = msg.players;
         obstacles = msg.obstacles || [];
+        powerups  = msg.powerups  || [];
         for (const t of tanks) colorMap[t.name] = t.color;
         showScreen('screen-game');
         resizeCanvas();
@@ -257,6 +265,7 @@ function handle(msg) {
       tanks = msg.players;
       bullets = [];
       obstacles = msg.obstacles || [];
+      powerups  = msg.powerups  || [];
       for (const t of tanks) colorMap[t.name] = t.color;
       gameW = msg.W; gameH = msg.H;
       buildHud();
@@ -267,17 +276,33 @@ function handle(msg) {
       document.getElementById('screen-game').classList.toggle('obs-mode', isObs);
       break;
 
-    case 'tank_g':
-      // Merge colors from colorMap — server omits color in per-frame updates
-      tanks = msg.tanks.map(t => ({ ...t, color: colorMap[t.name] || '#888' }));
+    case 'tank_g': {
+      const newTanks = msg.tanks.map(t => ({ ...t, color: colorMap[t.name] || '#888' }));
+      // Emit tread tracks based on movement
+      for (const t of newTanks) {
+        if (!t.alive) { prevPos[t.name] = null; continue; }
+        const prev = prevPos[t.name];
+        if (prev && Math.hypot(t.x - prev.x, t.y - prev.y) > 5 && tracks.length < 600) {
+          tracks.push({ x: prev.x, y: prev.y, angle: prev.angle, life: 1 });
+        }
+        prevPos[t.name] = { x: t.x, y: t.y, angle: t.angle };
+      }
+      tanks   = newTanks;
       bullets = msg.bullets;
+      if (msg.powerups) powerups = msg.powerups;
+      // Muzzle flash for tanks that fired this tick
+      for (const name of (msg.fired || [])) {
+        const t = tanks.find(t => t.name === name);
+        if (t) spawnMuzzleFlash(t);
+      }
       updateHud();
       renderGame();
       // Track overheat state per tank
       for (const t of tanks) {
-        if (t.overheated) overheatEnd[t.name] = Date.now() + 100; // refresh
+        if (t.overheated) overheatEnd[t.name] = Date.now() + 100;
       }
       break;
+    }
 
     case 'tank_overheat': {
       const end = Date.now() + msg.duration;
@@ -291,7 +316,8 @@ function handle(msg) {
 
     case 'tank_hit': {
       const t = tanks.find(t => t.name === msg.name);
-      if (t) spawnHit(t.x, t.y, '255,200,60', false);
+      if (t) spawnHit(t.x, t.y, msg.shielded ? '100,180,255' : '255,200,60', false);
+      if (msg.name === myName) triggerShake(msg.shielded ? 2 : 5, 280);
       break;
     }
 
@@ -310,7 +336,18 @@ function handle(msg) {
     case 'tank_destroyed': {
       const td = tanks.find(t => t.name === msg.name);
       if (td) spawnHit(td.x, td.y, '255,80,50', true);
+      if (msg.name === myName) triggerShake(10, 500);
       flash(`${msg.name} destroyed!`, 1500);
+      break;
+    }
+
+    case 'tank_powerup': {
+      const pu_t = tanks.find(t => t.name === msg.name);
+      if (pu_t) {
+        const puRgb = { speed:'255,238,88', shield:'66,165,245', spread:'171,71,188', rapid:'255,112,67' };
+        spawnHit(pu_t.x, pu_t.y, puRgb[msg.puType] || '200,200,200', false);
+      }
+      if (msg.name === myName) flash(msg.puType.toUpperCase() + '!', 1200);
       break;
     }
 
@@ -333,9 +370,12 @@ function handle(msg) {
       bullets = [];
       tanks = [];
       obstacles = [];
+      powerups = [];
       smokes.length = 0;
       sparks.length = 0;
       rings.length = 0;
+      tracks.length = 0;
+      mflash.length = 0;
       showScreen('screen-waiting');
       break;
 
@@ -422,6 +462,9 @@ function updateWaitingRoom(msg) {
     document.getElementById('btn-start').disabled = players.length < 2;
     const addAiBtn = document.getElementById('btn-add-ai');
     addAiBtn.style.display = players.length < MAX ? '' : 'none';
+    const layoutBtn = document.getElementById('btn-layout');
+    layoutBtn.style.display = '';
+    layoutBtn.textContent = `Map: ${msg.layoutName || 'Random'} ▶`;
   }
 }
 
@@ -454,11 +497,28 @@ function heatHtml(heat, overheated) {
   return `<span style="display:inline-block;width:30px;height:5px;background:#333;border-radius:3px;vertical-align:middle;margin-left:4px"><span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
 }
 
+function powerupHtml(type, end) {
+  if (!type) return '';
+  const rem = Math.max(0, end - Date.now());
+  const pct = Math.round(rem / PU_DURATION * 100);
+  const cols  = { speed:'#ffee58', shield:'#42a5f5', spread:'#ab47bc', rapid:'#ff7043' };
+  const names = { speed:'SPD', shield:'DEF', spread:'✦✦✦', rapid:'RAPID' };
+  const col = cols[type] || '#aaa';
+  return `<span style="font-size:.6rem;color:${col};margin-left:4px">${names[type]||type}</span>`
+       + `<span style="display:inline-block;width:22px;height:4px;background:#333;border-radius:3px;vertical-align:middle;margin-left:2px">`
+       + `<span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
+}
+
 function updateHud() {
   for (const t of tanks) {
     const hp = document.getElementById(`hud-hp-${t.name}`);
-    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + heatHtml(t.heat || 0, t.overheated);
+    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + heatHtml(t.heat || 0, t.overheated) + powerupHtml(t.powerupType, t.powerupEnd);
   }
+}
+
+function triggerShake(amp, ms) {
+  shakeAmp = amp;
+  shakeUntil = Date.now() + ms;
 }
 
 // ── Smoke particles ───────────────────────────────────────────────────────────
@@ -576,6 +636,12 @@ window.addEventListener('resize', resizeCanvas);
 function renderGame() {
   const W = gameW, H = gameH;
   ctx.clearRect(0, 0, W, H);
+  ctx.save();
+
+  // Screen shake
+  if (Date.now() < shakeUntil) {
+    ctx.translate((Math.random() - 0.5) * shakeAmp, (Math.random() - 0.5) * shakeAmp);
+  }
 
   // Arena background
   ctx.fillStyle = '#0d1b0d';
@@ -588,6 +654,10 @@ function renderGame() {
   for (let x = 0; x <= W; x += GS) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
   for (let y = 0; y <= H; y += GS) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
+  // Tread tracks (below obstacles)
+  tickTracks();
+  drawTracks();
+
   // Arena border
   ctx.strokeStyle = '#2e4a2e';
   ctx.lineWidth = 3;
@@ -595,6 +665,9 @@ function renderGame() {
 
   // Obstacles
   for (const obs of obstacles) drawObstacle(obs);
+
+  // Power-up crates
+  for (const pu of powerups) drawPowerup(pu);
 
   // Bullets
   for (const b of bullets) {
@@ -621,7 +694,6 @@ function renderGame() {
     drawTank(ctx, t);
     ctx.globalAlpha = 1;
     ctx.restore();
-    // X mark
     ctx.save();
     ctx.translate(t.x, t.y);
     ctx.strokeStyle = '#ef5350';
@@ -631,6 +703,10 @@ function renderGame() {
     ctx.restore();
   }
 
+  // Muzzle flashes (above tanks)
+  tickMuzzleFlashes();
+  drawMuzzleFlashes();
+
   // Smoke (above all tanks)
   for (const t of tanks) emitSmoke(t);
   tickSmokes();
@@ -639,6 +715,8 @@ function renderGame() {
   // Hit sparks + rings (topmost layer)
   tickSparks();
   drawSparks();
+
+  ctx.restore();
 }
 
 function drawTank(ctx, t) {
@@ -646,6 +724,25 @@ function drawTank(ctx, t) {
   const bodyRad   = t.angle * Math.PI / 180;
   const turretRad = (t.turretAngle !== undefined ? t.turretAngle : t.angle) * Math.PI / 180;
   const hot = t.overheated || (overheatEnd[t.name] && Date.now() < overheatEnd[t.name]);
+
+  // ── Powerup auras ─────────────────────────────────────────────────────
+  if (t.shield) {
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 28, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(66,165,245,0.75)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  if (t.powerupType === 'speed') {
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(bodyRad);
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 12, 22, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,238,88,0.12)';
+    ctx.fill();
+    ctx.restore();
+  }
 
   // ── Body (tracks + hull) rotates with body angle ──────────────────────
   ctx.save();
@@ -736,6 +833,96 @@ function drawObstacle(obs) {
     const col = frac > 0.5 ? '#66bb6a' : frac > 0.25 ? '#ffa726' : '#ef5350';
     ctx.fillStyle = col;
     ctx.fillRect(bx, by, bw * frac, bh);
+  }
+}
+
+function drawPowerup(pu) {
+  const size  = 22;
+  const bob   = Math.sin(Date.now() / 400 + pu.id) * 2;  // gentle float
+  const cols  = { speed:'#ffee58', shield:'#42a5f5', spread:'#ab47bc', rapid:'#ff7043' };
+  const ltrs  = { speed:'S', shield:'Δ', spread:'✦', rapid:'R' };
+  const col   = cols[pu.type] || '#aaa';
+  const x = pu.x, y = pu.y + bob;
+
+  // Glow
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.9, 0, Math.PI * 2);
+  ctx.fillStyle = col.replace(/^#/, '') === col ? col : col + '30';
+  ctx.fillStyle = `${col}28`;
+  ctx.fill();
+
+  // Crate body
+  ctx.fillStyle = '#1e2a1e';
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  const h = size / 2;
+  ctx.beginPath();
+  ctx.roundRect(x - h, y - h, size, size, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cross lines
+  ctx.beginPath(); ctx.moveTo(x - h, y); ctx.lineTo(x + h, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x, y + h); ctx.stroke();
+
+  // Letter
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = col;
+  ctx.fillText(ltrs[pu.type] || '?', x, y);
+}
+
+// ── Tread tracks ──────────────────────────────────────────────────────────────
+function tickTracks() {
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    tracks[i].life -= 0.003;
+    if (tracks[i].life <= 0) tracks.splice(i, 1);
+  }
+}
+
+function drawTracks() {
+  for (const tr of tracks) {
+    ctx.save();
+    ctx.translate(tr.x, tr.y);
+    ctx.rotate(tr.angle * Math.PI / 180);
+    ctx.globalAlpha = tr.life * 0.22;
+    ctx.fillStyle = '#060e06';
+    ctx.fillRect(-18, -7, 6, 14);  // left tread
+    ctx.fillRect(12,  -7, 6, 14);  // right tread
+    ctx.restore();
+  }
+}
+
+// ── Muzzle flashes ────────────────────────────────────────────────────────────
+function spawnMuzzleFlash(t) {
+  const TH = 44;
+  const rad = (t.turretAngle !== undefined ? t.turretAngle : t.angle) * Math.PI / 180;
+  mflash.push({
+    x: t.x + Math.sin(rad) * (TH / 2 + 10),
+    y: t.y - Math.cos(rad) * (TH / 2 + 10),
+    rad,
+    life: 1,
+  });
+}
+
+function tickMuzzleFlashes() {
+  for (let i = mflash.length - 1; i >= 0; i--) {
+    mflash[i].life -= 0.22;
+    if (mflash[i].life <= 0) mflash.splice(i, 1);
+  }
+}
+
+function drawMuzzleFlashes() {
+  for (const f of mflash) {
+    const r = 10 * f.life;
+    const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+    g.addColorStop(0, `rgba(255,255,200,${f.life.toFixed(2)})`);
+    g.addColorStop(1, 'rgba(255,160,0,0)');
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
   }
 }
 
@@ -881,11 +1068,11 @@ makeJoystick(
     if (isFirst) {
       // Fire immediately on any touch; fall back to last aimed direction if in deadzone
       if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
-      // Keep firing every 2 s while held
+      // Keep firing every 3 s while held
       clearInterval(autoFireInterval);
       autoFireInterval = setInterval(() => {
         if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
-      }, 2000);
+      }, 3000);
     }
   },
   () => {
@@ -908,6 +1095,10 @@ function doObserve() {
   isObs = true;
   wsSend({ type: 'tank_join', name: myName }); // server handles overflow → observe
 }
+
+document.getElementById('btn-layout').onclick = () => {
+  wsSend({ type: 'tank_set_layout' });
+};
 
 document.getElementById('btn-add-ai').onclick = () => {
   wsSend({ type: 'tank_add_ai' });

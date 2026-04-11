@@ -19,16 +19,16 @@ const stats      = require('./stats');
 // Each entry: [wss, startMessageTypes[]]
 // A second 'connection' listener sniffs for these types and increments the counter.
 const GAME_START_MSGS = [
-  [snake,      'snake',      ['snake_start', 'snake_restart']],
-  [connect5,   'connect5',   ['start']],
-  [chess,      'chess',      ['chess_start', 'chess_rematch_start']],
-  [battleship, 'battleship', ['bs_start']],
-  [airplane,   'airplane',   ['aj_game_start']],
+  [snake,      'snake',      ['snake_create']],
+  [connect5,   'connect5',   ['create']],
+  [chess,      'chess',      ['chess_create']],
+  [battleship, 'battleship', ['bs_create']],
+  [airplane,   'airplane',   ['aj_create']],
   [pictionary, 'pictionary', ['pic_create']],
-  [pingpong,   'pingpong',   ['start']],
-  [blockstack, 'blockstack', ['start']],
-  [raiden,     'raiden',     ['start']],
-  [gofish,     'gofish',     ['start']],
+  [pingpong,   'pingpong',   ['start']],   // no explicit create msg
+  [blockstack, 'blockstack', ['create']],
+  [raiden,     'raiden',     ['create']],
+  [gofish,     'gofish',     ['start']],   // no explicit create msg
 ];
 for (const [mod, game, types] of GAME_START_MSGS) {
   mod.wss.on('connection', ws => {

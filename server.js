@@ -24,7 +24,7 @@ const GAME_START_MSGS = [
   [chess,      'chess',      ['chess_start', 'chess_rematch_start']],
   [battleship, 'battleship', ['bs_start']],
   [airplane,   'airplane',   ['aj_game_start']],
-  [pictionary, 'pictionary', ['pic_start_game']],
+  [pictionary, 'pictionary', ['pic_confirm_word']],
   [pingpong,   'pingpong',   ['start']],
   [blockstack, 'blockstack', ['start']],
   [raiden,     'raiden',     ['start']],

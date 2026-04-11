@@ -79,8 +79,6 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 .joy-knob{width:46px;height:46px;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
 #joystick-knob{background:#3a5090;border:2px solid #5a70c0;box-shadow:0 0 8px rgba(90,112,192,0.5)}
 #joystick-fire-knob{background:#7a2020;border:2px solid #c04040;box-shadow:0 0 8px rgba(192,64,64,0.5)}
-#joystick-fire-outer.overheated{border-color:#ff9800;animation:heat-pulse .4s ease-in-out infinite}
-@keyframes heat-pulse{0%,100%{box-shadow:0 0 6px #ff9800}50%{box-shadow:0 0 20px #ff6b00,0 0 40px #ff9800}}
 
 /* ── Game over ── */
 .winner-badge{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-top:4px}
@@ -168,7 +166,7 @@ let bullets = [];       // { x, y }
 let obstacles = [];     // { id, x, y, w, h, hp }
 let powerups  = [];     // { id, x, y, type }
 let colorMap = {};      // name → color
-const overheatEnd = {}; // name → timestamp
+const overheatEnd = {}; // name → timestamp (kept for legacy; barrel uses t.cooldownEnd directly)
 const smokes  = [];     // smoke particles
 const sparks  = [];     // hit spark particles { x, y, vx, vy, life, decay, r, rgb }
 const rings   = [];     // hit ring effects    { x, y, r, maxR, life, rgb }
@@ -297,20 +295,6 @@ function handle(msg) {
       }
       updateHud();
       renderGame();
-      // Sync client-side overheatEnd for turret glow (cooldownEnd from tank_g is the ground truth)
-      for (const t of tanks) {
-        if (t.cooldownEnd && t.cooldownEnd > Date.now()) overheatEnd[t.name] = t.cooldownEnd;
-      }
-      break;
-    }
-
-    case 'tank_overheat': {
-      const end = Date.now() + msg.duration;
-      overheatEnd[msg.name] = end;
-      if (msg.name === myName || isObs) {
-        document.getElementById('joystick-fire-outer').classList.add('overheated');
-        setTimeout(() => document.getElementById('joystick-fire-outer').classList.remove('overheated'), msg.duration);
-      }
       break;
     }
 
@@ -725,7 +709,14 @@ function drawTank(ctx, t) {
   const TW = 34, TH = 44;
   const bodyRad   = t.angle * Math.PI / 180;
   const turretRad = (t.turretAngle !== undefined ? t.turretAngle : t.angle) * Math.PI / 180;
-  const hot = t.overheated || (overheatEnd[t.name] && Date.now() < overheatEnd[t.name]);
+  const now2 = Date.now();
+  const cd2 = t.rapidFire ? 1000 : 2000;
+  const cooldownFrac = (t.cooldownEnd && now2 < t.cooldownEnd)
+    ? Math.max(0, 1 - (t.cooldownEnd - now2) / cd2)
+    : 1;
+  const fullBarH = TH / 2 + 2;  // 24px at full extension
+  const minBarH  = 6;            // 6px retracted (just-fired)
+  const barH = minBarH + (fullBarH - minBarH) * cooldownFrac;
 
   // ── Powerup auras ─────────────────────────────────────────────────────
   if (t.shield) {
@@ -768,31 +759,21 @@ function drawTank(ctx, t) {
   ctx.translate(t.x, t.y);
   ctx.rotate(turretRad);
 
-  // Barrel
-  const barrelColor = hot ? '#ff6b00' : shadeColor(t.color, -50);
-  ctx.fillStyle = barrelColor;
-  ctx.fillRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
+  // Barrel (retracts toward turret on fire, recovers over cooldown)
+  ctx.fillStyle = shadeColor(t.color, -50);
+  ctx.fillRect(-4, -6 - barH, 8, barH);
   ctx.strokeStyle = 'rgba(0,0,0,0.5)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
+  ctx.strokeRect(-4, -6 - barH, 8, barH);
 
   // Turret ring
   ctx.beginPath();
   ctx.arc(0, 0, 10, 0, Math.PI * 2);
-  ctx.fillStyle = hot ? '#cc4400' : shadeColor(t.color, -30);
+  ctx.fillStyle = shadeColor(t.color, -30);
   ctx.fill();
-  ctx.strokeStyle = hot ? '#ff9800' : 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = hot ? 2 : 1.5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
-
-  // Overheat glow
-  if (hot) {
-    ctx.beginPath();
-    ctx.arc(0, 0, 13, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,150,0,0.5)';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  }
 
   ctx.restore();
 

@@ -222,6 +222,8 @@ function handleStart(ws) {
 function startNextGame(session, sessionId) {
   const allPlayers = getAllPlayers(session).filter(p => p.ws.readyState === 1);
   if (allPlayers.length < 2) return false;
+  // Sort alphabetically so the round-robin order is consistent and predictable
+  allPlayers.sort((a, b) => a.name.localeCompare(b.name));
 
   // Rotate painter in join order: find last painter's position, take the next one
   const lastIdx = allPlayers.findIndex(p => p.name === session.lastPainterName);

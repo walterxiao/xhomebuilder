@@ -71,16 +71,11 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 #flash-msg.show{opacity:1}
 
 /* ── Mobile controls ── */
-#ctrl-area{flex-shrink:0;background:#16213e;border-top:1px solid #2a2a5a;padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px}
+#ctrl-area{flex-shrink:0;background:#16213e;border-top:1px solid #2a2a5a;padding:12px 24px;padding-bottom:max(12px,env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:16px}
 .obs-mode #ctrl-area{display:none}
-.dpad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,48px);gap:4px}
-.dpad button{border:none;border-radius:8px;background:#1e2e50;color:#c0c0e0;font-size:1.3rem;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;display:flex;align-items:center;justify-content:center}
-.dpad button:active,.dpad button.pressed{background:#3a5090}
-.dpad .d-up{grid-column:2}
-.dpad .d-left{grid-column:1;grid-row:2}
-.dpad .d-down{grid-column:2;grid-row:2}
-.dpad .d-right{grid-column:3;grid-row:2}
-#fire-btn{width:88px;height:88px;border-radius:50%;background:#b71c1c;color:#fff;font-size:1rem;font-weight:bold;letter-spacing:1px;border:3px solid #ef5350;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;text-transform:uppercase;font-family:inherit}
+#joystick-outer{width:110px;height:110px;border-radius:50%;background:rgba(30,46,80,0.85);border:2px solid #3a4a7a;position:relative;touch-action:none;flex-shrink:0}
+#joystick-knob{width:46px;height:46px;border-radius:50%;background:#3a5090;border:2px solid #5a70c0;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 8px rgba(90,112,192,0.5)}
+#fire-btn{width:96px;height:96px;border-radius:50%;background:#b71c1c;color:#fff;font-size:1rem;font-weight:bold;letter-spacing:1px;border:3px solid #ef5350;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;text-transform:uppercase;font-family:inherit}
 #fire-btn:active,#fire-btn.pressed{background:#ef5350}
 
 /* ── Game over ── */
@@ -138,12 +133,7 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div id="flash-msg"></div>
   </div>
   <div id="ctrl-area">
-    <div class="dpad">
-      <button class="d-up"    data-dir="up">▲</button>
-      <button class="d-left"  data-dir="left">◀</button>
-      <button class="d-down"  data-dir="down">▼</button>
-      <button class="d-right" data-dir="right">▶</button>
-    </div>
+    <div id="joystick-outer"><div id="joystick-knob"></div></div>
     <button id="fire-btn">🔥 Fire</button>
   </div>
 </div>
@@ -587,17 +577,46 @@ function sendInput() {
   wsSend({ type: 'tank_in', ...cur });
 }
 
-// Mobile D-pad
-document.querySelectorAll('.dpad button').forEach(btn => {
-  const dir = btn.dataset.dir;
-  const activate = () => { keys[dir] = true; btn.classList.add('pressed'); sendInput(); };
-  const deactivate = () => { keys[dir] = false; btn.classList.remove('pressed'); sendInput(); };
-  btn.addEventListener('touchstart', e => { e.preventDefault(); activate(); }, { passive: false });
-  btn.addEventListener('touchend',   e => { e.preventDefault(); deactivate(); }, { passive: false });
-  btn.addEventListener('mousedown',  activate);
-  btn.addEventListener('mouseup',    deactivate);
-  btn.addEventListener('mouseleave', deactivate);
-});
+// Virtual joystick
+const joyOuter = document.getElementById('joystick-outer');
+const joyKnob  = document.getElementById('joystick-knob');
+const JOY_MAX  = 34;  // max knob travel in px
+const JOY_DEAD = 9;   // deadzone in px
+let joyActive = false, joyOX = 0, joyOY = 0;
+
+function joyStart(e) {
+  e.preventDefault();
+  joyActive = true;
+  const r = joyOuter.getBoundingClientRect();
+  joyOX = r.left + r.width  / 2;
+  joyOY = r.top  + r.height / 2;
+  joyApply(e.touches ? e.touches[0].clientX : e.clientX,
+           e.touches ? e.touches[0].clientY : e.clientY);
+}
+function joyApply(cx, cy) {
+  let dx = cx - joyOX, dy = cy - joyOY;
+  const dist = Math.hypot(dx, dy);
+  if (dist > JOY_MAX) { dx = dx / dist * JOY_MAX; dy = dy / dist * JOY_MAX; }
+  joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  keys.left  = dx < -JOY_DEAD;
+  keys.right = dx >  JOY_DEAD;
+  keys.up    = dy < -JOY_DEAD;
+  keys.down  = dy >  JOY_DEAD;
+  sendInput();
+}
+function joyEnd(e) {
+  e.preventDefault();
+  joyActive = false;
+  joyKnob.style.transform = 'translate(-50%, -50%)';
+  keys.left = keys.right = keys.up = keys.down = false;
+  sendInput();
+}
+joyOuter.addEventListener('touchstart', joyStart, { passive: false });
+joyOuter.addEventListener('touchmove',  e => { if (joyActive) { e.preventDefault(); joyApply(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
+joyOuter.addEventListener('touchend',   joyEnd, { passive: false });
+joyOuter.addEventListener('mousedown',  joyStart);
+document.addEventListener('mousemove',  e => { if (joyActive) joyApply(e.clientX, e.clientY); });
+document.addEventListener('mouseup',    e => { if (joyActive) joyEnd(e); });
 
 // Fire button
 const fireBtn = document.getElementById('fire-btn');

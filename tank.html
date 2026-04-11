@@ -80,6 +80,14 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 #joystick-knob{background:#3a5090;border:2px solid #5a70c0;box-shadow:0 0 8px rgba(90,112,192,0.5)}
 #joystick-fire-knob{background:#7a2020;border:2px solid #c04040;box-shadow:0 0 8px rgba(192,64,64,0.5)}
 
+/* ── Amend button ── */
+#amend-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+#btn-amend{background:#0f2218;border:2px solid #2a5c38;border-radius:10px;color:#56aa6a;padding:9px 14px;font-family:inherit;font-size:.78rem;font-weight:bold;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .15s,border-color .15s,color .15s;min-width:76px;line-height:1.2}
+#btn-amend.active{background:#143322;border-color:#44bb60;color:#6ddd84;box-shadow:0 0 14px rgba(68,187,96,.45)}
+#btn-amend:disabled{background:#111;border-color:#1a2a1a;color:#334;cursor:not-allowed;box-shadow:none}
+#amend-bar-bg{width:66px;height:4px;background:#0f1a12;border-radius:3px;overflow:hidden}
+#amend-bar{height:100%;width:0%;background:#44bb60;border-radius:3px;transition:width .12s linear}
+
 /* ── Game over ── */
 .winner-badge{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-top:4px}
 .winner-dot{display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;margin-right:8px;margin-bottom:2px}
@@ -137,6 +145,10 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
   </div>
   <div id="ctrl-area">
     <div class="joy-outer" id="joystick-outer"><div class="joy-knob" id="joystick-knob"></div></div>
+    <div id="amend-wrap">
+      <button id="btn-amend" disabled>AMEND</button>
+      <div id="amend-bar-bg"><div id="amend-bar"></div></div>
+    </div>
     <div class="joy-outer" id="joystick-fire-outer"><div class="joy-knob" id="joystick-fire-knob"></div></div>
   </div>
 </div>
@@ -172,6 +184,7 @@ const sparks  = [];     // hit spark particles { x, y, vx, vy, life, decay, r, r
 const rings   = [];     // hit ring effects    { x, y, r, maxR, life, rgb }
 const tracks  = [];     // tread marks         { x, y, angle, life }
 const mflash  = [];     // muzzle flashes      { x, y, rad, life }
+const heals   = [];     // amend heal floaters { x, y, life }
 const prevPos = {};     // name → {x,y,angle} for track emission
 let shakeUntil = 0, shakeAmp = 0;
 const PU_DURATION = 8000; // keep in sync with server POWERUP_DURATION
@@ -295,8 +308,41 @@ function handle(msg) {
       }
       updateHud();
       renderGame();
+      // Sync amend button state for my own tank
+      if (!isObs) {
+        const myT = tanks.find(t => t.name === myName);
+        const amendBtn = document.getElementById('btn-amend');
+        const amendBar = document.getElementById('amend-bar');
+        if (myT && myT.alive) {
+          amendBtn.disabled = false;
+          if (myT.amending) {
+            amendBtn.classList.add('active');
+            amendBtn.textContent = 'CANCEL';
+            amendBar.style.width = Math.round((myT.amendProgress || 0) * 100) + '%';
+          } else {
+            amendBtn.classList.remove('active');
+            amendBtn.textContent = 'AMEND';
+            amendBar.style.width = '0%';
+          }
+        } else {
+          amendBtn.disabled = true;
+          amendBtn.classList.remove('active');
+          amendBtn.textContent = 'AMEND';
+          amendBar.style.width = '0%';
+        }
+      }
       break;
     }
+
+    case 'tank_amend_heal': {
+      const ht = tanks.find(t => t.name === msg.name);
+      if (ht) heals.push({ x: ht.x + (Math.random() - 0.5) * 16, y: ht.y - 22, life: 1 });
+      break;
+    }
+
+    case 'tank_amend_cancel':
+      // Server cancelled amend due to movement — button state syncs via tank_g
+      break;
 
     case 'tank_hit': {
       const t = tanks.find(t => t.name === msg.name);
@@ -495,10 +541,18 @@ function powerupHtml(type, end) {
        + `<span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
 }
 
+function amendHudHtml(t) {
+  if (!t.amending || !t.alive) return '';
+  const pct = Math.round((t.amendProgress || 0) * 100);
+  return `<span style="font-size:.65rem;color:#44bb60;margin-left:3px">🔧</span>`
+       + `<span style="display:inline-block;width:18px;height:4px;background:#0f1a12;border-radius:3px;vertical-align:middle;margin-left:2px">`
+       + `<span style="display:block;width:${pct}%;height:100%;background:#44bb60;border-radius:3px"></span></span>`;
+}
+
 function updateHud() {
   for (const t of tanks) {
     const hp = document.getElementById(`hud-hp-${t.name}`);
-    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + cooldownHtml(t.cooldownEnd || 0, t.rapidFire) + powerupHtml(t.powerupType, t.powerupEnd);
+    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + cooldownHtml(t.cooldownEnd || 0, t.rapidFire) + powerupHtml(t.powerupType, t.powerupEnd) + amendHudHtml(t);
   }
 }
 
@@ -702,6 +756,24 @@ function renderGame() {
   tickSparks();
   drawSparks();
 
+  // Heal floaters
+  for (let i = heals.length - 1; i >= 0; i--) {
+    const h = heals[i];
+    h.life -= 0.018;
+    h.y    -= 0.6;
+    if (h.life <= 0) { heals.splice(i, 1); continue; }
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, h.life * 2);
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#4bdd6b';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 3;
+    ctx.strokeText('+♥', h.x, h.y);
+    ctx.fillText('+♥', h.x, h.y);
+    ctx.restore();
+  }
+
   ctx.restore();
 }
 
@@ -776,6 +848,82 @@ function drawTank(ctx, t) {
   ctx.stroke();
 
   ctx.restore();
+
+  // ── Repair bot (visible while amending) ──────────────────────────────
+  if (t.amending) {
+    const ts = Date.now() / 1000;
+    const slideOut = Math.min(1, (t.amendProgress || 0) * 6); // slides out in first ~17% of 5s
+    const bob = Math.sin(ts * 4.5) * 2.5;
+    const armSwing = Math.sin(ts * 6) * 4;
+
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(bodyRad);  // bot stands relative to tank body
+
+    const bx = (TW / 2 + 3) + 16 * slideOut;  // slides out from tank right side
+    const by = bob;
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(bx, TH / 4, 7 * slideOut, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs
+    ctx.strokeStyle = '#5a6e99';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx - 2, by + 6);  ctx.lineTo(bx - 3, by + 12);
+    ctx.moveTo(bx + 2, by + 6);  ctx.lineTo(bx + 3, by + 12);
+    ctx.stroke();
+
+    // Body suit
+    ctx.fillStyle = '#7788bb';
+    ctx.fillRect(bx - 5, by - 2, 10, 8);
+    // Suit highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(bx - 4, by - 1, 4, 2);
+
+    // Head / helmet
+    ctx.fillStyle = '#99aad4';
+    ctx.beginPath();
+    ctx.arc(bx, by - 6, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Visor
+    ctx.fillStyle = '#22aaff';
+    ctx.fillRect(bx - 3.5, by - 8, 7, 3.5);
+    // Visor glare
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(bx - 2.5, by - 7.5, 2.5, 1);
+
+    // Left arm reaching toward tank hull with wrench
+    ctx.strokeStyle = '#7788bb';
+    ctx.lineWidth = 2;
+    const leftHandX = bx - 5 - 6;
+    const leftHandY = by + 1 + armSwing;
+    ctx.beginPath();
+    ctx.moveTo(bx - 5, by + 1);
+    ctx.lineTo(leftHandX, leftHandY);
+    ctx.stroke();
+    // Wrench
+    ctx.fillStyle = '#c0c8d8';
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(leftHandX, leftHandY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Right arm (free, counter-swings)
+    ctx.strokeStyle = '#7788bb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx + 5, by + 1);
+    ctx.lineTo(bx + 9, by + 3 - armSwing * 0.5);
+    ctx.stroke();
+
+    ctx.restore();
+  }
 
   // ── Name label ────────────────────────────────────────────────────────
   ctx.save();
@@ -1093,6 +1241,10 @@ document.getElementById('btn-start').onclick = () => {
 
 document.getElementById('btn-rematch').onclick = () => {
   wsSend({ type: 'tank_rematch' });
+};
+
+document.getElementById('btn-amend').onclick = () => {
+  wsSend({ type: 'tank_amend' });
 };
 
 document.getElementById('btn-leave').onclick = () => {

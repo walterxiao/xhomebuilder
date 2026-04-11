@@ -29,6 +29,9 @@ const POWERUP_DURATION = 8000;     // ms a powerup lasts
 const POWERUP_PICKUP_R = 22;       // pickup collision radius
 const POWERUP_MAX      = 3;        // max simultaneous powerups on map
 
+// Amend (repair)
+const AMEND_INTERVAL = 5000;      // ms to regenerate 1 HP while amending
+
 // Spawn corners, facing inward (angle = degrees, 0 = up, clockwise)
 const SPAWNS = [
   { x: 90,      y: 90,      angle: 135 },
@@ -179,6 +182,8 @@ function startGame(s) {
     p.rapidFire   = false;
     p.powerupType = null;
     p.powerupEnd  = 0;
+    p.amending    = false;
+    p.amendAcc    = 0;
   }
 
   bcast(s, {
@@ -294,7 +299,26 @@ function tick(s) {
     if (!p.alive) continue;
     const spMult = (p.speedBoost > 1 && p.powerupType) ? p.speedBoost : 1;
 
-    if (typeof p.input.joyAngle === 'number') {
+    // Amend: block movement; heal on timer; cancel if player tries to translate
+    if (p.amending) {
+      const wantsToMove = p.input.up || p.input.down
+        || (typeof p.input.joyAngle === 'number' && p.input.joyMag > 0.15);
+      if (wantsToMove) {
+        p.amending = false;
+        p.amendAcc = 0;
+        bcast(s, { type: 'tank_amend_cancel', name: p.name });
+      } else {
+        p.amendAcc += TICK_MS;
+        if (p.amendAcc >= AMEND_INTERVAL && p.hp < HP_MAX) {
+          p.hp++;
+          p.amendAcc -= AMEND_INTERVAL;
+          bcast(s, { type: 'tank_amend_heal', name: p.name, hp: p.hp });
+        }
+      }
+    }
+
+    if (!p.amending) {
+      if (typeof p.input.joyAngle === 'number') {
       // Left joystick: steer body toward absolute map direction, then advance
       let diff = p.input.joyAngle - p.angle;
       while (diff >  180) diff -= 360;
@@ -324,6 +348,7 @@ function tick(s) {
               p.y - Math.cos(rad) * spd));
       }
     }
+    } // end !p.amending movement block
 
     // Turret: follows right joystick if active, otherwise follows body
     if (typeof p.input.fireJoyAngle === 'number') {
@@ -453,6 +478,8 @@ function tick(s) {
       shield: p.shield,
       powerupType: p.powerupType || null,
       powerupEnd: p.powerupEnd,
+      amending: !!p.amending,
+      amendProgress: p.amending ? Math.min(1, (p.amendAcc || 0) / AMEND_INTERVAL) : 0,
     })),
     bullets: s.bullets.map(b => ({ x: Math.round(b.x), y: Math.round(b.y) })),
     powerups: s.powerups,
@@ -623,6 +650,12 @@ wss.on('connection', ws => {
       }
       tryFire(sess, me, fNow);
 
+    // ── toggle amend (repair) ─────────────────────────────────────────────
+    } else if (msg.type === 'tank_amend') {
+      if (!me || sess.state !== 'playing' || !me.alive) return;
+      me.amending = !me.amending;
+      if (!me.amending) me.amendAcc = 0;
+
     // ── set map layout ────────────────────────────────────────────────────
     } else if (msg.type === 'tank_set_layout') {
       if (!sess || !me || sess.state !== 'waiting') return;
@@ -644,6 +677,7 @@ wss.on('connection', ws => {
         p.vel = 0; p.overheatEnd = 0;
         p.shield = false; p.speedBoost = 1; p.spreadShot = false;
         p.rapidFire = false; p.powerupType = null; p.powerupEnd = 0;
+        p.amending = false; p.amendAcc = 0;
         if (p.isAI && p.ai) p.ai.jitterTime = 0;
       }
       if (!openSess) openSess = sess;
@@ -696,6 +730,7 @@ function mkPlayer(ws, name, idx) {
     shield: false, speedBoost: 1,
     spreadShot: false, rapidFire: false,
     powerupType: null, powerupEnd: 0,
+    amending: false, amendAcc: 0,
   };
 }
 

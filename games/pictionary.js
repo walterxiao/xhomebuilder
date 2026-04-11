@@ -215,6 +215,14 @@ function handleStart(ws) {
     return;
   }
 
+  startNextGame(session, sessionId);
+}
+
+// Shared logic: pick a new random painter (excluding last), deal a word, begin choosing phase
+function startNextGame(session, sessionId) {
+  const allPlayers = getAllPlayers(session).filter(p => p.ws.readyState === 1);
+  if (allPlayers.length < 2) return false;
+
   // Randomly pick painter, excluding last game's painter
   const eligible = allPlayers.filter(p => p.name !== session.lastPainterName);
   const pool = eligible.length > 0 ? eligible : allPlayers;
@@ -260,6 +268,20 @@ function handleStart(ws) {
   for (const g of session.guessers) {
     send(g.ws, { type: 'pic_waiting_word', painterName: session.painter.name });
   }
+
+  return true;
+}
+
+function handleContinue(ws) {
+  const sessionId = ws.picSessionId;
+  if (sessionId === null) return;
+  const session = sessions.get(sessionId);
+  if (!session || session.phase !== 'over') return;
+  // Mark as starting immediately to prevent double-clicks
+  session.phase = 'starting';
+  if (session.timer) { clearInterval(session.timer); session.timer = null; }
+  session.playAgainVotes.clear();
+  startNextGame(session, sessionId);
 }
 
 function handleConfirmWord(ws, word) {
@@ -406,7 +428,7 @@ function endGame(sessionId, winner) {
   });
 }
 
-// ── Play Again / Rematch ──────────────────────────────────────────────────────
+// ── Players helper ────────────────────────────────────────────────────────────
 
 function getAllPlayers(session) {
   const all = [];
@@ -415,23 +437,7 @@ function getAllPlayers(session) {
   return all;
 }
 
-function handlePlayAgain(ws) {
-  const sessionId = ws.picSessionId;
-  if (sessionId === null) return;
-  const session = sessions.get(sessionId);
-  if (!session || session.phase !== 'over') return;
-
-  session.playAgainVotes.add(ws);
-
-  const connected = getAllPlayers(session).filter(p => p.ws.readyState === 1);
-  broadcast(session, { type: 'pic_play_again_vote', votes: session.playAgainVotes.size, total: connected.length });
-
-  if (session.playAgainVotes.size >= connected.length) {
-    startRematch(sessionId);
-  }
-}
-
-function startRematch(sessionId) {
+function _unused_startRematch(sessionId) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
@@ -540,7 +546,7 @@ wss.on('connection', (ws) => {
       case 'pic_clear':      handleClear(ws); break;
       case 'pic_guess':      handleGuess(ws, msg.animal); break;
       case 'pic_chat':       handleChat(ws, msg.text); break;
-      case 'pic_play_again': handlePlayAgain(ws); break;
+      case 'pic_continue':   handleContinue(ws); break;
     }
   });
 

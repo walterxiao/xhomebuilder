@@ -752,10 +752,9 @@
   <div id="results-list"></div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
     <div class="over-links">
-      <button id="btn-play-again" class="over-btn">Play Again</button>
+      <button id="btn-continue" class="over-btn">Continue →</button>
       <a href="/">Back to Hub</a>
     </div>
-    <div id="play-again-votes"></div>
   </div>
 </div>
 
@@ -1108,6 +1107,7 @@ function handleMessage(msg) {
       document.getElementById('lobby-hint').textContent =
         `Waiting for ${escHtml(msg.painterName)} to choose a word...`;
       document.getElementById('btn-start').style.display = 'none';
+      showScreen('screen-lobby');
       break;
 
     case 'pic_start_game': {
@@ -1216,18 +1216,10 @@ function handleMessage(msg) {
       } else {
         resultsList.innerHTML = '<div style="color:#888;text-align:center;padding:12px;">No guessers</div>';
       }
-      // Reset play-again state
-      const playAgainBtn = document.getElementById('btn-play-again');
-      if (playAgainBtn) { playAgainBtn.disabled = false; playAgainBtn.textContent = 'Play Again'; }
-      const votesEl = document.getElementById('play-again-votes');
-      if (votesEl) votesEl.textContent = '';
+      // Reset continue button
+      const continueBtn = document.getElementById('btn-continue');
+      if (continueBtn) { continueBtn.disabled = false; continueBtn.textContent = 'Continue →'; }
       showScreen('screen-over');
-      break;
-    }
-
-    case 'pic_play_again_vote': {
-      const votesEl = document.getElementById('play-again-votes');
-      if (votesEl) votesEl.textContent = `${msg.votes} / ${msg.total} voted to play again`;
       break;
     }
 
@@ -1403,11 +1395,11 @@ function confirmWord() {
   wsSend({ type: 'pic_confirm_word', word });
 }
 
-document.getElementById('btn-play-again').addEventListener('click', () => {
-  const btn = document.getElementById('btn-play-again');
+document.getElementById('btn-continue').addEventListener('click', () => {
+  const btn = document.getElementById('btn-continue');
   btn.disabled = true;
-  btn.textContent = 'Waiting...';
-  wsSend({ type: 'pic_play_again' });
+  btn.textContent = 'Starting...';
+  wsSend({ type: 'pic_continue' });
 });
 
 document.getElementById('btn-chat-send').addEventListener('click', sendChat);

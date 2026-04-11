@@ -672,17 +672,31 @@ makeJoystick(
   ()           => { joyAngle = null;  joyMag = 0;   sendInput(); }
 );
 
-// Right joystick — aim + tap-to-fire
+// Right joystick — aim + tap-to-fire + auto-fire while held
+let autoFireInterval = null;
+
 makeJoystick(
   document.getElementById('joystick-fire-outer'),
   document.getElementById('joystick-fire-knob'),
   (angle, mag, isFirst) => {
     fireJoyAngle = angle;
     sendInput();
-    // Fire once on initial tap (touchstart / mousedown)
-    if (isFirst && angle !== null) wsSend({ type: 'tank_fire', angle });
+    if (isFirst && angle !== null) {
+      // Fire immediately on press
+      wsSend({ type: 'tank_fire', angle });
+      // Auto-fire every 1 s while finger stays on joystick
+      clearInterval(autoFireInterval);
+      autoFireInterval = setInterval(() => {
+        if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
+      }, 1000);
+    }
   },
-  () => { /* keep fireJoyAngle so turret stays aimed */ sendInput(); }
+  () => {
+    clearInterval(autoFireInterval);
+    autoFireInterval = null;
+    /* keep fireJoyAngle so turret stays aimed */
+    sendInput();
+  }
 );
 
 // ── Button actions ────────────────────────────────────────────────────────────

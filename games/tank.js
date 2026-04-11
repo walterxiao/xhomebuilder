@@ -7,7 +7,10 @@ const W = 800, H = 560;
 const TANK_W = 34, TANK_H = 44;   // collision box half-widths
 const TANK_SPEED   = 2.4;          // px/tick forward
 const TANK_BACK    = 1.4;          // px/tick backward
-const TANK_ROT     = 3.5;          // degrees/tick
+const TANK_ROT     = 3.5;          // degrees/tick (keyboard)
+const TANK_ROT_JOY = 8;            // degrees/tick (joystick — snappier)
+const OVERHEAT_MAX = 10;           // bullets before overheat
+const OVERHEAT_MS  = 3000;         // cooldown duration
 const BULLET_SPEED = 8;
 const BULLET_R     = 5;
 const BULLET_LIFE  = 140;          // ticks (~4.6 s at 33ms)
@@ -70,21 +73,25 @@ function startGame(s) {
   for (let i = 0; i < s.players.length; i++) {
     const p = s.players[i];
     const sp = SPAWNS[i];
-    p.x     = sp.x;
-    p.y     = sp.y;
-    p.angle = sp.angle;
-    p.hp    = HP_MAX;
-    p.alive = true;
-    p.input = { up: false, down: false, left: false, right: false, fire: false };
-    p.lastFire = 0;
-    p.vel   = 0;
+    p.x           = sp.x;
+    p.y           = sp.y;
+    p.angle       = sp.angle;
+    p.turretAngle = sp.angle;
+    p.hp          = HP_MAX;
+    p.alive       = true;
+    p.input       = { up: false, down: false, left: false, right: false, fire: false,
+                      joyAngle: null, joyMag: 0, fireJoyAngle: null };
+    p.lastFire    = 0;
+    p.bulletCount = 0;
+    p.overheatEnd = 0;
+    p.vel         = 0;
   }
 
   bcast(s, {
     type: 'tank_start',
     players: s.players.map(p => ({
       name: p.name, color: p.color, isAI: !!p.isAI,
-      x: p.x, y: p.y, angle: p.angle, hp: p.hp,
+      x: p.x, y: p.y, angle: p.angle, turretAngle: p.turretAngle, hp: p.hp,
     })),
     W, H,
   });
@@ -169,35 +176,47 @@ function tick(s) {
   for (const p of s.players) {
     if (!p.alive) continue;
 
-    if (p.input.left)  p.angle = (p.angle - TANK_ROT + 360) % 360;
-    if (p.input.right) p.angle = (p.angle + TANK_ROT) % 360;
-
-    let spd = 0;
-    if (p.input.up)   spd =  TANK_SPEED;
-    if (p.input.down) spd = -TANK_BACK;
-
-    if (spd !== 0) {
-      const rad = deg2rad(p.angle);
-      p.x = Math.max(TANK_W / 2 + 2, Math.min(W - TANK_W / 2 - 2,
-            p.x + Math.sin(rad) * spd));
-      p.y = Math.max(TANK_H / 2 + 2, Math.min(H - TANK_H / 2 - 2,
-            p.y - Math.cos(rad) * spd));
+    if (typeof p.input.joyAngle === 'number') {
+      // Left joystick: steer body toward absolute map direction, then advance
+      let diff = p.input.joyAngle - p.angle;
+      while (diff >  180) diff -= 360;
+      while (diff < -180) diff += 360;
+      p.angle = Math.abs(diff) <= TANK_ROT_JOY
+        ? p.input.joyAngle
+        : (p.angle + (diff > 0 ? TANK_ROT_JOY : -TANK_ROT_JOY) + 360) % 360;
+      if (p.input.joyMag > 0.15) {
+        const rad = deg2rad(p.angle);
+        p.x = Math.max(TANK_W / 2 + 2, Math.min(W - TANK_W / 2 - 2,
+              p.x + Math.sin(rad) * TANK_SPEED * p.input.joyMag));
+        p.y = Math.max(TANK_H / 2 + 2, Math.min(H - TANK_H / 2 - 2,
+              p.y - Math.cos(rad) * TANK_SPEED * p.input.joyMag));
+      }
+    } else {
+      // Keyboard: relative turn + forward/backward
+      if (p.input.left)  p.angle = (p.angle - TANK_ROT + 360) % 360;
+      if (p.input.right) p.angle = (p.angle + TANK_ROT) % 360;
+      let spd = 0;
+      if (p.input.up)   spd =  TANK_SPEED;
+      if (p.input.down) spd = -TANK_BACK;
+      if (spd !== 0) {
+        const rad = deg2rad(p.angle);
+        p.x = Math.max(TANK_W / 2 + 2, Math.min(W - TANK_W / 2 - 2,
+              p.x + Math.sin(rad) * spd));
+        p.y = Math.max(TANK_H / 2 + 2, Math.min(H - TANK_H / 2 - 2,
+              p.y - Math.cos(rad) * spd));
+      }
     }
 
-    // Fire
-    if (p.input.fire && now - p.lastFire >= FIRE_CD) {
-      p.lastFire = now;
-      const rad = deg2rad(p.angle);
-      const bx = p.x + Math.sin(rad) * (TANK_H / 2 + BULLET_R + 2);
-      const by = p.y - Math.cos(rad) * (TANK_H / 2 + BULLET_R + 2);
-      s.bullets.push({
-        x: bx, y: by,
-        vx: Math.sin(rad) * BULLET_SPEED,
-        vy: -Math.cos(rad) * BULLET_SPEED,
-        owner: p.name,
-        life: BULLET_LIFE,
-        bounced: false,
-      });
+    // Turret: follows right joystick if active, otherwise follows body
+    if (typeof p.input.fireJoyAngle === 'number') {
+      p.turretAngle = p.input.fireJoyAngle;
+    } else {
+      p.turretAngle = p.angle;
+    }
+
+    // Keyboard fire (Space — cooldown-limited)
+    if (p.input.fire && now - p.lastFire >= FIRE_CD && now >= p.overheatEnd) {
+      tryFire(s, p, now);
     }
   }
 
@@ -255,14 +274,42 @@ function tick(s) {
       x: Math.round(p.x * 10) / 10,
       y: Math.round(p.y * 10) / 10,
       angle: Math.round(p.angle * 10) / 10,
+      turretAngle: Math.round(p.turretAngle * 10) / 10,
       hp: p.hp,
       alive: p.alive,
+      heat: p.bulletCount,
+      overheated: now < p.overheatEnd,
     })),
     bullets: s.bullets.map(b => ({
       x: Math.round(b.x),
       y: Math.round(b.y),
     })),
   });
+}
+
+// ── Fire helpers ──────────────────────────────────────────────────────────────
+function spawnBullet(s, p, angle) {
+  const rad = deg2rad(angle);
+  s.bullets.push({
+    x: p.x + Math.sin(rad) * (TANK_H / 2 + BULLET_R + 2),
+    y: p.y - Math.cos(rad) * (TANK_H / 2 + BULLET_R + 2),
+    vx: Math.sin(rad) * BULLET_SPEED,
+    vy: -Math.cos(rad) * BULLET_SPEED,
+    owner: p.name,
+    life: BULLET_LIFE,
+    bounced: false,
+  });
+}
+
+function tryFire(s, p, now) {
+  p.lastFire = now;
+  spawnBullet(s, p, p.turretAngle);
+  p.bulletCount++;
+  if (p.bulletCount >= OVERHEAT_MAX) {
+    p.bulletCount = 0;
+    p.overheatEnd = now + OVERHEAT_MS;
+    bcast(s, { type: 'tank_overheat', name: p.name, duration: OVERHEAT_MS });
+  }
 }
 
 // ── End game ──────────────────────────────────────────────────────────────────
@@ -359,6 +406,21 @@ wss.on('connection', ws => {
       me.input.left  = !!msg.left;
       me.input.right = !!msg.right;
       me.input.fire  = !!msg.fire;
+      // Joystick: absolute map angle (0=north, 90=east) + magnitude 0..1
+      me.input.joyAngle     = (typeof msg.joyAngle     === 'number') ? msg.joyAngle : null;
+      me.input.joyMag       = (typeof msg.joyMag       === 'number') ? Math.max(0, Math.min(1, msg.joyMag)) : 0;
+      me.input.fireJoyAngle = (typeof msg.fireJoyAngle === 'number') ? msg.fireJoyAngle : null;
+
+    // ── tap fire (right joystick tap) ─────────────────────────────────────
+    } else if (msg.type === 'tank_fire') {
+      if (!me || sess.state !== 'playing' || !me.alive) return;
+      const fNow = Date.now();
+      if (fNow - me.lastFire < FIRE_CD || fNow < me.overheatEnd) return;
+      if (typeof msg.angle === 'number') {
+        me.input.fireJoyAngle = msg.angle;
+        me.turretAngle = msg.angle;
+      }
+      tryFire(sess, me, fNow);
 
     // ── rematch ───────────────────────────────────────────────────────────
     } else if (msg.type === 'tank_rematch') {
@@ -367,8 +429,9 @@ wss.on('connection', ws => {
       sess.state = 'waiting';
       sess.bullets = [];
       for (const p of sess.players) {
-        p.input = { up: false, down: false, left: false, right: false, fire: false };
-        p.vel = 0;
+        p.input = { up: false, down: false, left: false, right: false, fire: false,
+                    joyAngle: null, joyMag: 0, fireJoyAngle: null };
+        p.vel = 0; p.bulletCount = 0; p.overheatEnd = 0;
         if (p.isAI && p.ai) p.ai.jitterTime = 0;
       }
       if (!openSess) openSess = sess;

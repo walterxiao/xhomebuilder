@@ -73,10 +73,14 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
 /* ── Mobile controls ── */
 #ctrl-area{flex-shrink:0;background:#16213e;border-top:1px solid #2a2a5a;padding:12px 24px;padding-bottom:max(12px,env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:16px}
 .obs-mode #ctrl-area{display:none}
-#joystick-outer{width:110px;height:110px;border-radius:50%;background:rgba(30,46,80,0.85);border:2px solid #3a4a7a;position:relative;touch-action:none;flex-shrink:0}
-#joystick-knob{width:46px;height:46px;border-radius:50%;background:#3a5090;border:2px solid #5a70c0;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 8px rgba(90,112,192,0.5)}
-#fire-btn{width:96px;height:96px;border-radius:50%;background:#b71c1c;color:#fff;font-size:1rem;font-weight:bold;letter-spacing:1px;border:3px solid #ef5350;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;text-transform:uppercase;font-family:inherit}
-#fire-btn:active,#fire-btn.pressed{background:#ef5350}
+.joy-outer{width:110px;height:110px;border-radius:50%;position:relative;touch-action:none;flex-shrink:0}
+#joystick-outer{background:rgba(30,46,80,0.85);border:2px solid #3a4a7a}
+#joystick-fire-outer{background:rgba(80,20,20,0.85);border:2px solid #7a2a2a}
+.joy-knob{width:46px;height:46px;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+#joystick-knob{background:#3a5090;border:2px solid #5a70c0;box-shadow:0 0 8px rgba(90,112,192,0.5)}
+#joystick-fire-knob{background:#7a2020;border:2px solid #c04040;box-shadow:0 0 8px rgba(192,64,64,0.5)}
+#joystick-fire-outer.overheated{border-color:#ff9800;animation:heat-pulse .4s ease-in-out infinite}
+@keyframes heat-pulse{0%,100%{box-shadow:0 0 6px #ff9800}50%{box-shadow:0 0 20px #ff6b00,0 0 40px #ff9800}}
 
 /* ── Game over ── */
 .winner-badge{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-top:4px}
@@ -133,8 +137,8 @@ body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;
     <div id="flash-msg"></div>
   </div>
   <div id="ctrl-area">
-    <div id="joystick-outer"><div id="joystick-knob"></div></div>
-    <button id="fire-btn">🔥 Fire</button>
+    <div class="joy-outer" id="joystick-outer"><div class="joy-knob" id="joystick-knob"></div></div>
+    <div class="joy-outer" id="joystick-fire-outer"><div class="joy-knob" id="joystick-fire-knob"></div></div>
   </div>
 </div>
 
@@ -158,12 +162,15 @@ let isObs = false;
 let gameW = 800, gameH = 560;
 
 // Game render state
-let tanks = [];     // { name, color, x, y, angle, hp, alive }
-let bullets = [];   // { x, y }
-let colorMap = {};  // name → color
+let tanks = [];         // { name, color, x, y, angle, turretAngle, hp, alive, heat, overheated }
+let bullets = [];       // { x, y }
+let colorMap = {};      // name → color
+const overheatEnd = {}; // name → timestamp
 
 // Input state
 const keys = { up: false, down: false, left: false, right: false, fire: false };
+let joyAngle = null, joyMag = 0;
+let fireJoyAngle = null;
 let lastInputSent = {};
 
 // ── Screens ───────────────────────────────────────────────────────────────────
@@ -260,7 +267,21 @@ function handle(msg) {
       bullets = msg.bullets;
       updateHud();
       renderGame();
+      // Track overheat state per tank
+      for (const t of tanks) {
+        if (t.overheated) overheatEnd[t.name] = Date.now() + 100; // refresh
+      }
       break;
+
+    case 'tank_overheat': {
+      const end = Date.now() + msg.duration;
+      overheatEnd[msg.name] = end;
+      if (msg.name === myName || isObs) {
+        document.getElementById('joystick-fire-outer').classList.add('overheated');
+        setTimeout(() => document.getElementById('joystick-fire-outer').classList.remove('overheated'), msg.duration);
+      }
+      break;
+    }
 
     case 'tank_hit':
       // Flash handled via tank_g hp update
@@ -399,10 +420,17 @@ function hpHtml(hp, alive) {
   return s;
 }
 
+function heatHtml(heat, overheated) {
+  if (overheated) return '<span style="font-size:.65rem;color:#ff9800;letter-spacing:1px">🔥HOT</span>';
+  const pct = Math.round((heat / 10) * 100);
+  const col = pct > 70 ? '#ff6b00' : pct > 40 ? '#ffa726' : '#66bb6a';
+  return `<span style="display:inline-block;width:30px;height:5px;background:#333;border-radius:3px;vertical-align:middle;margin-left:4px"><span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
+}
+
 function updateHud() {
   for (const t of tanks) {
-    const el = document.getElementById(`hud-hp-${t.name}`);
-    if (el) el.innerHTML = hpHtml(t.hp, t.alive);
+    const hp = document.getElementById(`hud-hp-${t.name}`);
+    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + heatHtml(t.heat || 0, t.overheated);
   }
 }
 
@@ -480,45 +508,61 @@ function renderGame() {
 
 function drawTank(ctx, t) {
   const TW = 34, TH = 44;
-  const rad = t.angle * Math.PI / 180;
+  const bodyRad   = t.angle * Math.PI / 180;
+  const turretRad = (t.turretAngle !== undefined ? t.turretAngle : t.angle) * Math.PI / 180;
+  const hot = t.overheated || (overheatEnd[t.name] && Date.now() < overheatEnd[t.name]);
 
+  // ── Body (tracks + hull) rotates with body angle ──────────────────────
   ctx.save();
   ctx.translate(t.x, t.y);
-  ctx.rotate(rad);
+  ctx.rotate(bodyRad);
 
-  // Tank tracks (slightly wider dark rects on sides)
   ctx.fillStyle = '#333';
   ctx.fillRect(-TW / 2 - 3, -TH / 2, 8, TH);
   ctx.fillRect( TW / 2 - 5, -TH / 2, 8, TH);
 
-  // Tank body
   ctx.fillStyle = t.color;
   ctx.fillRect(-TW / 2, -TH / 2, TW, TH);
-
-  // Body border
   ctx.strokeStyle = 'rgba(0,0,0,0.5)';
   ctx.lineWidth = 1.5;
   ctx.strokeRect(-TW / 2, -TH / 2, TW, TH);
 
-  // Turret ring
-  ctx.beginPath();
-  ctx.arc(0, 0, 10, 0, Math.PI * 2);
-  ctx.fillStyle = shadeColor(t.color, -30);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.restore();
+
+  // ── Turret + barrel rotate independently ──────────────────────────────
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.rotate(turretRad);
 
   // Barrel
-  ctx.fillStyle = shadeColor(t.color, -50);
+  const barrelColor = hot ? '#ff6b00' : shadeColor(t.color, -50);
+  ctx.fillStyle = barrelColor;
   ctx.fillRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
   ctx.strokeStyle = 'rgba(0,0,0,0.5)';
   ctx.lineWidth = 1;
   ctx.strokeRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
 
+  // Turret ring
+  ctx.beginPath();
+  ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  ctx.fillStyle = hot ? '#cc4400' : shadeColor(t.color, -30);
+  ctx.fill();
+  ctx.strokeStyle = hot ? '#ff9800' : 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = hot ? 2 : 1.5;
+  ctx.stroke();
+
+  // Overheat glow
+  if (hot) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,150,0,0.5)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
   ctx.restore();
 
-  // Name label
+  // ── Name label ────────────────────────────────────────────────────────
   ctx.save();
   ctx.font = 'bold 10px sans-serif';
   ctx.textAlign = 'center';
@@ -570,63 +614,76 @@ document.addEventListener('keyup', e => {
 
 function sendInput() {
   if (isObs || !ws) return;
-  // Only send if changed
-  const cur = { up: keys.up, down: keys.down, left: keys.left, right: keys.right, fire: keys.fire };
+  const cur = { up: keys.up, down: keys.down, left: keys.left, right: keys.right, fire: keys.fire,
+                joyAngle, joyMag, fireJoyAngle };
   if (JSON.stringify(cur) === JSON.stringify(lastInputSent)) return;
   lastInputSent = { ...cur };
   wsSend({ type: 'tank_in', ...cur });
 }
 
-// Virtual joystick
-const joyOuter = document.getElementById('joystick-outer');
-const joyKnob  = document.getElementById('joystick-knob');
-const JOY_MAX  = 34;  // max knob travel in px
-const JOY_DEAD = 9;   // deadzone in px
-let joyActive = false, joyOX = 0, joyOY = 0;
+// ── Joystick factory ──────────────────────────────────────────────────────────
+const JOY_MAX  = 34;
+const JOY_DEAD = 9;
 
-function joyStart(e) {
-  e.preventDefault();
-  joyActive = true;
-  const r = joyOuter.getBoundingClientRect();
-  joyOX = r.left + r.width  / 2;
-  joyOY = r.top  + r.height / 2;
-  joyApply(e.touches ? e.touches[0].clientX : e.clientX,
-           e.touches ? e.touches[0].clientY : e.clientY);
+function makeJoystick(outer, knob, onMove, onEnd) {
+  let active = false, ox = 0, oy = 0;
+  function start(e) {
+    e.preventDefault();
+    active = true;
+    const r = outer.getBoundingClientRect();
+    ox = r.left + r.width / 2;
+    oy = r.top  + r.height / 2;
+    apply(e.touches ? e.touches[0].clientX : e.clientX,
+          e.touches ? e.touches[0].clientY : e.clientY, true);
+  }
+  function apply(cx, cy, isFirst) {
+    let dx = cx - ox, dy = cy - oy;
+    const dist = Math.hypot(dx, dy);
+    const clamped = Math.min(dist, JOY_MAX);
+    if (dist > 0) { dx = dx / dist * clamped; dy = dy / dist * clamped; }
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    if (dist >= JOY_DEAD) {
+      const angle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+      const mag   = Math.min(1, (dist - JOY_DEAD) / (JOY_MAX - JOY_DEAD));
+      onMove(angle, mag, isFirst);
+    } else {
+      onMove(null, 0, false);
+    }
+  }
+  function end(e) {
+    e.preventDefault();
+    active = false;
+    knob.style.transform = 'translate(-50%, -50%)';
+    onEnd();
+  }
+  outer.addEventListener('touchstart', start, { passive: false });
+  outer.addEventListener('touchmove',  e => { if (active) { e.preventDefault(); apply(e.touches[0].clientX, e.touches[0].clientY, false); } }, { passive: false });
+  outer.addEventListener('touchend',   end, { passive: false });
+  outer.addEventListener('mousedown',  start);
+  document.addEventListener('mousemove', e => { if (active) apply(e.clientX, e.clientY, false); });
+  document.addEventListener('mouseup',   e => { if (active) end(e); });
 }
-function joyApply(cx, cy) {
-  let dx = cx - joyOX, dy = cy - joyOY;
-  const dist = Math.hypot(dx, dy);
-  if (dist > JOY_MAX) { dx = dx / dist * JOY_MAX; dy = dy / dist * JOY_MAX; }
-  joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-  keys.left  = dx < -JOY_DEAD;
-  keys.right = dx >  JOY_DEAD;
-  keys.up    = dy < -JOY_DEAD;
-  keys.down  = dy >  JOY_DEAD;
-  sendInput();
-}
-function joyEnd(e) {
-  e.preventDefault();
-  joyActive = false;
-  joyKnob.style.transform = 'translate(-50%, -50%)';
-  keys.left = keys.right = keys.up = keys.down = false;
-  sendInput();
-}
-joyOuter.addEventListener('touchstart', joyStart, { passive: false });
-joyOuter.addEventListener('touchmove',  e => { if (joyActive) { e.preventDefault(); joyApply(e.touches[0].clientX, e.touches[0].clientY); } }, { passive: false });
-joyOuter.addEventListener('touchend',   joyEnd, { passive: false });
-joyOuter.addEventListener('mousedown',  joyStart);
-document.addEventListener('mousemove',  e => { if (joyActive) joyApply(e.clientX, e.clientY); });
-document.addEventListener('mouseup',    e => { if (joyActive) joyEnd(e); });
 
-// Fire button
-const fireBtn = document.getElementById('fire-btn');
-const fireActivate = () => { keys.fire = true; fireBtn.classList.add('pressed'); sendInput(); };
-const fireDeactivate = () => { keys.fire = false; fireBtn.classList.remove('pressed'); sendInput(); };
-fireBtn.addEventListener('touchstart', e => { e.preventDefault(); fireActivate(); }, { passive: false });
-fireBtn.addEventListener('touchend',   e => { e.preventDefault(); fireDeactivate(); }, { passive: false });
-fireBtn.addEventListener('mousedown',  fireActivate);
-fireBtn.addEventListener('mouseup',    fireDeactivate);
-fireBtn.addEventListener('mouseleave', fireDeactivate);
+// Left joystick — movement direction (absolute map coords)
+makeJoystick(
+  document.getElementById('joystick-outer'),
+  document.getElementById('joystick-knob'),
+  (angle, mag) => { joyAngle = angle; joyMag = mag; sendInput(); },
+  ()           => { joyAngle = null;  joyMag = 0;   sendInput(); }
+);
+
+// Right joystick — aim + tap-to-fire
+makeJoystick(
+  document.getElementById('joystick-fire-outer'),
+  document.getElementById('joystick-fire-knob'),
+  (angle, mag, isFirst) => {
+    fireJoyAngle = angle;
+    sendInput();
+    // Fire once on initial tap (touchstart / mousedown)
+    if (isFirst && angle !== null) wsSend({ type: 'tank_fire', angle });
+  },
+  () => { /* keep fireJoyAngle so turret stays aimed */ sendInput(); }
+);
 
 // ── Button actions ────────────────────────────────────────────────────────────
 document.getElementById('btn-create').onclick = () => {

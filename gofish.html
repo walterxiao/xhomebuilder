@@ -132,6 +132,9 @@ h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(2
   #event-log{width:200px;max-width:44vw}
   .opp-box{min-width:100px;padding:9px 10px}
 }
+/* ---- CARD FLY ANIMATION ---- */
+#anim-layer{position:fixed;inset:0;pointer-events:none;z-index:999}
+.flying-card{position:fixed;width:44px;height:64px;background:repeating-linear-gradient(135deg,#1a4a9a 0,#1a4a9a 5px,#0a2a6a 5px,#0a2a6a 10px);border-radius:5px;border:1px solid #0a2060;box-shadow:2px 5px 14px rgba(0,0,0,.7);pointer-events:none;transition:transform .5s cubic-bezier(.25,.46,.45,.94),opacity .15s ease .4s}
 /* ---- STANDARD SESSIONS LIST ---- */
 .std-host-btn{width:100%;padding:12px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.95rem;font-family:Georgia,serif;font-weight:bold;letter-spacing:2px;cursor:pointer;margin-bottom:14px}
 .std-host-btn:hover{background:#f0c040}
@@ -230,6 +233,8 @@ h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(2
     </div>
   </div>
 </div>
+
+<div id="anim-layer"></div>
 
 <!-- GAME OVER -->
 <div id="gameover-overlay">
@@ -424,6 +429,34 @@ function addEvent(text, cls) {
   el.scrollTop = el.scrollHeight;
 }
 
+// ── Card fly animation ──
+function flyCards(fromEl, toEl, count) {
+  if (!fromEl || !toEl) return;
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const layer = document.getElementById('anim-layer');
+  const W = 44, H = 64;
+  const n = Math.min(count, 5);
+  for (let i = 0; i < n; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'flying-card';
+      const sx = fr.left + fr.width / 2 - W / 2 + i * 4;
+      const sy = fr.top + fr.height / 2 - H / 2 + i * 3;
+      el.style.left = sx + 'px';
+      el.style.top = sy + 'px';
+      layer.appendChild(el);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const tx = tr.left + tr.width / 2 - W / 2;
+        const ty = tr.top + tr.height / 2 - H / 2;
+        el.style.transform = `translate(${tx - sx}px,${ty - sy}px)`;
+        el.style.opacity = '0';
+      }));
+      setTimeout(() => el.remove(), 750);
+    }, i * 90);
+  }
+}
+
 // ── WebSocket ──
 function openWs(onOpen) {
   if (ws) { ws.onclose = null; ws.close(); }
@@ -515,6 +548,17 @@ function handle(msg) {
       else if (isMeTarget) text = `${asker} asked YOU for ${msg.rank}s!`;
       else text = `${asker} asked ${target} for ${msg.rank}s…`;
       addEvent(text, 'ev-ask');
+      break;
+    }
+
+    case 'card_transfer': {
+      const fromEl = msg.target === myIdx
+        ? document.getElementById('your-hand')
+        : document.getElementById('opp-' + msg.target);
+      const toEl = msg.asker === myIdx
+        ? document.getElementById('your-hand')
+        : document.getElementById('opp-' + msg.asker);
+      flyCards(fromEl, toEl, msg.count);
       break;
     }
 

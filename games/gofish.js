@@ -129,6 +129,7 @@ function handleAsk(ws, target, rank) {
   if (given.length > 0) {
     t.hand = t.hand.filter(c => c.r !== rank);
     a.hand.push(...given);
+    bcast(session, { type: 'card_transfer', asker: askerIdx, target, count: given.length });
     send(a.ws, { type: 'got_cards', cards: given, fromIdx: target, rank });
     send(t.ws, { type: 'hand_update', hand: t.hand });
 

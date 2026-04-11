@@ -551,6 +551,15 @@ function handle(msg) {
       break;
     }
 
+    case 'deck_draw': {
+      const fromEl = document.getElementById('deck-pile');
+      const toEl = msg.playerIdx === myIdx
+        ? document.getElementById('your-hand')
+        : document.getElementById('opp-' + msg.playerIdx);
+      flyCards(fromEl, toEl, 1);
+      break;
+    }
+
     case 'card_transfer': {
       const fromEl = msg.target === myIdx
         ? document.getElementById('your-hand')

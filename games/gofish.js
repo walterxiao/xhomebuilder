@@ -144,6 +144,7 @@ function handleAsk(ws, target, rank) {
     if (session.deck.length > 0) {
       drawnCard = session.deck.shift();
       a.hand.push(drawnCard);
+      bcast(session, { type: 'deck_draw', playerIdx: askerIdx });
       send(a.ws, { type: 'drew', card: drawnCard });
       lucky = drawnCard.r === rank;
       if (lucky) bcast(session, { type: 'lucky', asker: askerIdx, rank });
@@ -183,6 +184,7 @@ function advanceTurn(session, askerIdx, anotherTurn) {
   if (np.hand.length === 0 && session.deck.length > 0) {
     const drawn = session.deck.shift();
     np.hand.push(drawn);
+    bcast(session, { type: 'deck_draw', playerIdx: next });
     send(np.ws, { type: 'drew', card: drawn });
     send(np.ws, { type: 'hand_update', hand: np.hand });
     bcast(session, { type: 'state', players: pub(session), deckCount: session.deck.length });

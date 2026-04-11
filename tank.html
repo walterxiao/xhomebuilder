@@ -626,16 +626,51 @@ const JOY_MAX  = 34;
 const JOY_DEAD = 9;
 
 function makeJoystick(outer, knob, onMove, onEnd) {
-  let active = false, ox = 0, oy = 0;
+  let active = false, ox = 0, oy = 0, touchId = null;
+
   function start(e) {
     e.preventDefault();
+    if (active) return; // already tracking a finger on this stick
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    touchId = (t.identifier !== undefined) ? t.identifier : null;
     active = true;
     const r = outer.getBoundingClientRect();
-    ox = r.left + r.width / 2;
+    ox = r.left + r.width  / 2;
     oy = r.top  + r.height / 2;
-    apply(e.touches ? e.touches[0].clientX : e.clientX,
-          e.touches ? e.touches[0].clientY : e.clientY, true);
+    apply(t.clientX, t.clientY, true);
   }
+
+  function move(e) {
+    if (!active) return;
+    e.preventDefault();
+    // Find the specific finger that owns this joystick by its identifier
+    let t = null;
+    if (e.touches) {
+      for (const touch of e.touches) {
+        if (touch.identifier === touchId) { t = touch; break; }
+      }
+    } else { t = e; }
+    if (!t) return;
+    apply(t.clientX, t.clientY, false);
+  }
+
+  function end(e) {
+    if (!active) return;
+    if (e.changedTouches) {
+      // Only end when OUR finger lifts — ignore other fingers
+      let found = false;
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchId) { found = true; break; }
+      }
+      if (!found) return;
+    }
+    e.preventDefault();
+    active = false;
+    touchId = null;
+    knob.style.transform = 'translate(-50%, -50%)';
+    onEnd();
+  }
+
   function apply(cx, cy, isFirst) {
     let dx = cx - ox, dy = cy - oy;
     const dist = Math.hypot(dx, dy);
@@ -650,18 +685,14 @@ function makeJoystick(outer, knob, onMove, onEnd) {
       onMove(null, 0, false);
     }
   }
-  function end(e) {
-    e.preventDefault();
-    active = false;
-    knob.style.transform = 'translate(-50%, -50%)';
-    onEnd();
-  }
+
   outer.addEventListener('touchstart', start, { passive: false });
-  outer.addEventListener('touchmove',  e => { if (active) { e.preventDefault(); apply(e.touches[0].clientX, e.touches[0].clientY, false); } }, { passive: false });
-  outer.addEventListener('touchend',   end, { passive: false });
-  outer.addEventListener('mousedown',  start);
-  document.addEventListener('mousemove', e => { if (active) apply(e.clientX, e.clientY, false); });
-  document.addEventListener('mouseup',   e => { if (active) end(e); });
+  outer.addEventListener('touchmove',  move,  { passive: false });
+  outer.addEventListener('touchend',   end,   { passive: false });
+  // Mouse fallback (single pointer — only when no touch is active)
+  outer.addEventListener('mousedown', start);
+  document.addEventListener('mousemove', e => { if (active && touchId === null) move(e); });
+  document.addEventListener('mouseup',   e => { if (active && touchId === null) end(e); });
 }
 
 // Left joystick — movement direction (absolute map coords)

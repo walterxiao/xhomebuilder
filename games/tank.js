@@ -478,16 +478,17 @@ function spawnBullet(s, p, angle, isRapid) {
 }
 
 function tryFire(s, p, now) {
-  const cd = p.rapidFire ? RAPID_CD : SHOT_CD;
+  const cd       = p.rapidFire ? RAPID_CD : SHOT_CD;
+  const slowBullet = p.rapidFire || p.spreadShot;  // spread & rapid → slow, no-bounce
   p.lastFire    = now;
   p.overheatEnd = now + cd;
   (s.firedThisTick = s.firedThisTick || []).push(p.name);
   if (p.spreadShot) {
-    spawnBullet(s, p, p.turretAngle - 15, p.rapidFire);
-    spawnBullet(s, p, p.turretAngle,       p.rapidFire);
-    spawnBullet(s, p, p.turretAngle + 15,  p.rapidFire);
+    spawnBullet(s, p, p.turretAngle - 15, slowBullet);
+    spawnBullet(s, p, p.turretAngle,       slowBullet);
+    spawnBullet(s, p, p.turretAngle + 15,  slowBullet);
   } else {
-    spawnBullet(s, p, p.turretAngle, p.rapidFire);
+    spawnBullet(s, p, p.turretAngle, slowBullet);
   }
   bcast(s, { type: 'tank_overheat', name: p.name, duration: cd });
 }

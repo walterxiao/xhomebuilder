@@ -15,7 +15,7 @@ const BULLET_SPEED = 8;
 const BULLET_R     = 5;
 const BULLET_LIFE  = 140;          // ticks (~4.6 s at 33ms)
 const FIRE_CD      = 700;          // ms between shots
-const HP_MAX       = 3;
+const HP_MAX       = 5;
 const TICK_MS      = 33;           // ~30 fps
 const MAX_PLAYERS  = 4;
 

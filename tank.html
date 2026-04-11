@@ -168,6 +168,8 @@ let obstacles = [];     // { id, x, y, w, h, hp }
 let colorMap = {};      // name → color
 const overheatEnd = {}; // name → timestamp
 const smokes  = [];     // smoke particles
+const sparks  = [];     // hit spark particles { x, y, vx, vy, life, decay, r, rgb }
+const rings   = [];     // hit ring effects    { x, y, r, maxR, life, rgb }
 
 // Input state
 const keys = { up: false, down: false, left: false, right: false, fire: false };
@@ -287,25 +289,30 @@ function handle(msg) {
       break;
     }
 
-    case 'tank_hit':
-      // Flash handled via tank_g hp update
+    case 'tank_hit': {
+      const t = tanks.find(t => t.name === msg.name);
+      if (t) spawnHit(t.x, t.y, '255,200,60', false);
       break;
+    }
 
     case 'tank_obs_hit': {
       const o = obstacles.find(o => o.id === msg.id);
-      if (o) o.hp = msg.hp;
+      if (o) { o.hp = msg.hp; spawnHit(o.x, o.y, '190,165,120', false); }
       break;
     }
 
     case 'tank_obs_destroyed': {
-      const idx = obstacles.findIndex(o => o.id === msg.id);
-      if (idx >= 0) obstacles.splice(idx, 1);
+      const oi = obstacles.findIndex(o => o.id === msg.id);
+      if (oi >= 0) { spawnHit(obstacles[oi].x, obstacles[oi].y, '220,150,70', true); obstacles.splice(oi, 1); }
       break;
     }
 
-    case 'tank_destroyed':
+    case 'tank_destroyed': {
+      const td = tanks.find(t => t.name === msg.name);
+      if (td) spawnHit(td.x, td.y, '255,80,50', true);
       flash(`${msg.name} destroyed!`, 1500);
       break;
+    }
 
     case 'tank_left':
       flash(`${msg.name} left`, 1200);
@@ -327,6 +334,8 @@ function handle(msg) {
       tanks = [];
       obstacles = [];
       smokes.length = 0;
+      sparks.length = 0;
+      rings.length = 0;
       showScreen('screen-waiting');
       break;
 
@@ -495,6 +504,59 @@ function drawSmokes() {
   }
 }
 
+// ── Hit effects ───────────────────────────────────────────────────────────────
+function spawnHit(x, y, rgb, big) {
+  const count = big ? 18 : 9;
+  const speedMax = big ? 5.5 : 3.2;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = (big ? 1.8 : 0.8) + Math.random() * speedMax;
+    sparks.push({
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      life: 1,
+      decay: 0.055 + Math.random() * 0.055,
+      r: big ? 2 + Math.random() * 2 : 1.2 + Math.random() * 1.5,
+      rgb,
+    });
+  }
+  rings.push({ x, y, r: 2, maxR: big ? 36 : 20, life: 1, rgb });
+  if (big) rings.push({ x, y, r: 2, maxR: 22, life: 0.7, rgb: '255,230,100' });
+}
+
+function tickSparks() {
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i];
+    s.x += s.vx; s.y += s.vy;
+    s.vx *= 0.82; s.vy *= 0.82;
+    s.life -= s.decay;
+    if (s.life <= 0) sparks.splice(i, 1);
+  }
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i];
+    r.r += (r.maxR - r.r) * 0.28;
+    r.life -= 0.09;
+    if (r.life <= 0) rings.splice(i, 1);
+  }
+}
+
+function drawSparks() {
+  for (const s of sparks) {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${s.rgb},${s.life.toFixed(2)})`;
+    ctx.fill();
+  }
+  for (const r of rings) {
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(${r.rgb},${(r.life * 0.9).toFixed(2)})`;
+    ctx.lineWidth = r.life * 2.5;
+    ctx.stroke();
+  }
+}
+
 // ── Canvas ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -573,6 +635,10 @@ function renderGame() {
   for (const t of tanks) emitSmoke(t);
   tickSmokes();
   drawSmokes();
+
+  // Hit sparks + rings (topmost layer)
+  tickSparks();
+  drawSparks();
 }
 
 function drawTank(ctx, t) {

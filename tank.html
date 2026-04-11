@@ -710,12 +710,12 @@ makeJoystick(
   document.getElementById('joystick-fire-outer'),
   document.getElementById('joystick-fire-knob'),
   (angle, mag, isFirst) => {
-    fireJoyAngle = angle;
+    if (angle !== null) fireJoyAngle = angle;
     sendInput();
-    if (isFirst && angle !== null) {
-      // Fire immediately on press
-      wsSend({ type: 'tank_fire', angle });
-      // Auto-fire every 1 s while finger stays on joystick
+    if (isFirst) {
+      // Fire immediately on any touch; fall back to last aimed direction if in deadzone
+      if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
+      // Keep firing every 1 s while held
       clearInterval(autoFireInterval);
       autoFireInterval = setInterval(() => {
         if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });

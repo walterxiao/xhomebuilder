@@ -205,8 +205,10 @@ function startGame(s) {
 function computeAIInput(s, p, now) {
   if (!p.ai) p.ai = { jitter: 0, jitterTime: 0,
                       lastX: p.x, lastY: p.y, lastMoveCheck: now,
-                      avoidUntil: 0, avoidDir: 0 };
+                      avoidUntil: 0, avoidDir: 0,
+                      state: 'aggressive', aggressiveUntil: 0 };
   const ai = p.ai;
+  if (!ai.state) ai.state = 'aggressive';
 
   // Randomise aim jitter every ~3 s — holds wrong angle longer
   if (now - ai.jitterTime > 3000) {
@@ -234,6 +236,7 @@ function computeAIInput(s, p, now) {
   }
 
   if (!target) {
+    p.amending = false; p.amendAcc = 0; ai.state = 'aggressive';
     p.input = { up: false, down: false, left: false, right: false, fire: false };
     return;
   }
@@ -247,10 +250,11 @@ function computeAIInput(s, p, now) {
   while (diff >  180) diff -= 360;
   while (diff < -180) diff += 360;
 
-  // ── Wall avoidance ───────────────────────────────────────────────────────
+  // ── Wall avoidance (highest priority — cancels amend if needed) ──────────
   const margin = 65;
   const nearWall = p.x < margin || p.x > W - margin || p.y < margin || p.y > H - margin;
   if (nearWall) {
+    if (ai.state === 'amending') { p.amending = false; p.amendAcc = 0; ai.state = 'aggressive'; }
     const cx = (Math.atan2(W / 2 - p.x, -(H / 2 - p.y)) * 180 / Math.PI + 360) % 360;
     let cd = cx - p.angle;
     while (cd >  180) cd -= 360;
@@ -263,8 +267,31 @@ function computeAIInput(s, p, now) {
     return;
   }
 
-  // ── Stuck escape maneuver ────────────────────────────────────────────────
+  // ── State transitions ────────────────────────────────────────────────────
+  // Sync if amend was cancelled server-side by external movement
+  if (ai.state === 'amending' && !p.amending) ai.state = 'aggressive';
+
+  // Cancel amend: HP full, enemy too close, or stuck escape fires
+  if (ai.state === 'amending' && (p.hp >= HP_MAX || minDist < 150)) {
+    p.amending = false; p.amendAcc = 0;
+    ai.state = 'aggressive';
+    ai.aggressiveUntil = now + 5000; // don't retreat again for 5 s
+  }
+
+  // Retreating → amending when far enough from enemy and away from walls
+  if (ai.state === 'retreating' && minDist > 270) {
+    ai.state = 'amending';
+    p.amending = true; p.amendAcc = 0;
+  }
+
+  // Aggressive → retreating: ~25%/s chance when HP ≤ 2, after cooldown
+  if (ai.state === 'aggressive' && p.hp <= 2 && now > ai.aggressiveUntil && Math.random() < 0.012) {
+    ai.state = 'retreating';
+  }
+
+  // ── Stuck escape maneuver (interrupts retreat/aggressive, not amend) ─────
   if (now < ai.avoidUntil) {
+    if (ai.state === 'amending') { p.amending = false; p.amendAcc = 0; ai.state = 'aggressive'; }
     const sideAngle = (p.angle + ai.avoidDir * 90 + 360) % 360;
     let sd = sideAngle - p.angle;
     while (sd >  180) sd -= 360;
@@ -277,16 +304,40 @@ function computeAIInput(s, p, now) {
     return;
   }
 
+  // ── Amending: stay still, fire defensively if enemy close ───────────────
+  if (ai.state === 'amending') {
+    p.input.up = false; p.input.down = false;
+    p.input.left = false; p.input.right = false;
+    let aimDiff = targetAngle - p.angle;
+    while (aimDiff >  180) aimDiff -= 360;
+    while (aimDiff < -180) aimDiff += 360;
+    p.input.fire = Math.abs(aimDiff) < 12 && minDist < 260;
+    return;
+  }
+
+  // ── Retreating: face enemy, reverse away, keep firing ───────────────────
+  if (ai.state === 'retreating') {
+    p.input.left  = diff < -2;
+    p.input.right = diff > 2;
+    p.input.up    = false;
+    p.input.down  = true;  // back away while still facing (and shooting at) the enemy
+    let aimDiff = targetAngle - p.angle;
+    while (aimDiff >  180) aimDiff -= 360;
+    while (aimDiff < -180) aimDiff += 360;
+    p.input.fire = Math.abs(aimDiff) < 10;
+    return;
+  }
+
   // ── Obstacle avoidance: find nearest blocker on path to target ───────────
   if (dist > 40 && s.obstacles.length > 0) {
-    const nx = dx / dist, ny = dy / dist; // unit vector toward target
+    const nx = dx / dist, ny = dy / dist;
     let blockObs = null, blockPerp = 0, blockProj = Infinity;
 
     for (const obs of s.obstacles) {
       const ox = obs.x - p.x, oy = obs.y - p.y;
-      const proj = ox * nx + oy * ny;          // along-path distance to obstacle centre
+      const proj = ox * nx + oy * ny;
       if (proj <= 0 || proj > dist + 10) continue;
-      const perp = ox * ny - oy * nx;          // signed perpendicular offset
+      const perp = ox * ny - oy * nx;
       const clearance = Math.max(obs.w, obs.h) / 2 + TANK_W / 2 + 10;
       if (Math.abs(perp) < clearance && proj < blockProj) {
         blockObs = obs; blockPerp = perp; blockProj = proj;
@@ -294,14 +345,10 @@ function computeAIInput(s, p, now) {
     }
 
     if (blockObs) {
-      // Compute bypass waypoint: a point beside the obstacle, perpendicular to path.
-      // In screen coords (y-down), perp > 0 means obstacle is "above" path (north) →
-      // steer south (bSign = +1 uses the southward perpendicular (-ny, nx)).
       const cl     = Math.max(blockObs.w, blockObs.h) / 2 + TANK_W / 2 + 24;
       const bSign  = blockPerp >= 0 ? 1 : -1;
       const bpx    = blockObs.x + (-ny) * bSign * cl;
       const bpy    = blockObs.y +   nx  * bSign * cl;
-
       const bypassAngle = (Math.atan2(bpx - p.x, -(bpy - p.y)) * 180 / Math.PI + 360) % 360;
       let bd = bypassAngle - p.angle;
       while (bd >  180) bd -= 360;
@@ -315,16 +362,12 @@ function computeAIInput(s, p, now) {
     }
   }
 
-  // ── Normal: rotate toward aim, advance / retreat, fire ──────────────────
-  // Rotate toward jittered aim angle
+  // ── Normal aggressive: rotate toward aim, advance / retreat, fire ────────
   p.input.left  = diff < -2;
   p.input.right = diff > 2;
+  p.input.up    = minDist > 220;
+  p.input.down  = minDist < 110;
 
-  // Advance only when quite far, hold position at mid-range, back up when close
-  p.input.up   = minDist > 220;
-  p.input.down = minDist < 110;
-
-  // Fire only when well on-target (ignore jitter for firing check)
   let aimDiff = targetAngle - p.angle;
   while (aimDiff >  180) aimDiff -= 360;
   while (aimDiff < -180) aimDiff += 360;

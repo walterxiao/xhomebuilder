@@ -30,7 +30,7 @@ const POWERUP_PICKUP_R = 22;       // pickup collision radius
 const POWERUP_MAX      = 3;        // max simultaneous powerups on map
 
 // Amend (repair)
-const AMEND_INTERVAL = 5000;      // ms to regenerate 1 HP while amending
+const AMEND_INTERVAL = 4000;      // ms to regenerate 1 HP while amending
 
 // Spawn corners, facing inward (angle = degrees, 0 = up, clockwise)
 const SPAWNS = [
@@ -203,13 +203,26 @@ function startGame(s) {
 
 // ── AI ────────────────────────────────────────────────────────────────────────
 function computeAIInput(s, p, now) {
-  if (!p.ai) p.ai = { jitter: 0, jitterTime: 0 };
+  if (!p.ai) p.ai = { jitter: 0, jitterTime: 0,
+                      lastX: p.x, lastY: p.y, lastMoveCheck: now,
+                      avoidUntil: 0, avoidDir: 0 };
   const ai = p.ai;
 
   // Randomise aim jitter every ~3 s — holds wrong angle longer
   if (now - ai.jitterTime > 3000) {
-    ai.jitter = (Math.random() - 0.5) * 70; // ±35°
+    ai.jitter     = (Math.random() - 0.5) * 70; // ±35°
     ai.jitterTime = now;
+  }
+
+  // Stuck detection: sample every 1.5 s; if tried-to-move but barely advanced, dodge sideways
+  if (now - ai.lastMoveCheck > 1500) {
+    const moved = Math.hypot(p.x - ai.lastX, p.y - ai.lastY);
+    if (moved < 12 && (p.input.up || p.input.down)) {
+      ai.avoidDir   = Math.random() < 0.5 ? -1 : 1;
+      ai.avoidUntil = now + 700 + Math.random() * 600;
+    }
+    ai.lastX = p.x; ai.lastY = p.y;
+    ai.lastMoveCheck = now;
   }
 
   // Find nearest alive enemy
@@ -226,6 +239,7 @@ function computeAIInput(s, p, now) {
   }
 
   const dx = target.x - p.x, dy = target.y - p.y;
+  const dist = Math.hypot(dx, dy);
   const targetAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
   const aimAngle    = (targetAngle + ai.jitter + 360) % 360;
 
@@ -233,7 +247,7 @@ function computeAIInput(s, p, now) {
   while (diff >  180) diff -= 360;
   while (diff < -180) diff += 360;
 
-  // Wall avoidance — steer toward arena centre when near a wall
+  // ── Wall avoidance ───────────────────────────────────────────────────────
   const margin = 65;
   const nearWall = p.x < margin || p.x > W - margin || p.y < margin || p.y > H - margin;
   if (nearWall) {
@@ -249,6 +263,59 @@ function computeAIInput(s, p, now) {
     return;
   }
 
+  // ── Stuck escape maneuver ────────────────────────────────────────────────
+  if (now < ai.avoidUntil) {
+    const sideAngle = (p.angle + ai.avoidDir * 90 + 360) % 360;
+    let sd = sideAngle - p.angle;
+    while (sd >  180) sd -= 360;
+    while (sd < -180) sd += 360;
+    p.input.left  = sd < -2;
+    p.input.right = sd > 2;
+    p.input.up    = true;
+    p.input.down  = false;
+    p.input.fire  = false;
+    return;
+  }
+
+  // ── Obstacle avoidance: find nearest blocker on path to target ───────────
+  if (dist > 40 && s.obstacles.length > 0) {
+    const nx = dx / dist, ny = dy / dist; // unit vector toward target
+    let blockObs = null, blockPerp = 0, blockProj = Infinity;
+
+    for (const obs of s.obstacles) {
+      const ox = obs.x - p.x, oy = obs.y - p.y;
+      const proj = ox * nx + oy * ny;          // along-path distance to obstacle centre
+      if (proj <= 0 || proj > dist + 10) continue;
+      const perp = ox * ny - oy * nx;          // signed perpendicular offset
+      const clearance = Math.max(obs.w, obs.h) / 2 + TANK_W / 2 + 10;
+      if (Math.abs(perp) < clearance && proj < blockProj) {
+        blockObs = obs; blockPerp = perp; blockProj = proj;
+      }
+    }
+
+    if (blockObs) {
+      // Compute bypass waypoint: a point beside the obstacle, perpendicular to path.
+      // In screen coords (y-down), perp > 0 means obstacle is "above" path (north) →
+      // steer south (bSign = +1 uses the southward perpendicular (-ny, nx)).
+      const cl     = Math.max(blockObs.w, blockObs.h) / 2 + TANK_W / 2 + 24;
+      const bSign  = blockPerp >= 0 ? 1 : -1;
+      const bpx    = blockObs.x + (-ny) * bSign * cl;
+      const bpy    = blockObs.y +   nx  * bSign * cl;
+
+      const bypassAngle = (Math.atan2(bpx - p.x, -(bpy - p.y)) * 180 / Math.PI + 360) % 360;
+      let bd = bypassAngle - p.angle;
+      while (bd >  180) bd -= 360;
+      while (bd < -180) bd += 360;
+      p.input.left  = bd < -2;
+      p.input.right = bd > 2;
+      p.input.up    = true;
+      p.input.down  = false;
+      p.input.fire  = false;
+      return;
+    }
+  }
+
+  // ── Normal: rotate toward aim, advance / retreat, fire ──────────────────
   // Rotate toward jittered aim angle
   p.input.left  = diff < -2;
   p.input.right = diff > 2;

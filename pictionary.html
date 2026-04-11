@@ -77,6 +77,7 @@
     /* ── Screens ── */
     .screen { display: none; }
     .screen.active { display: block; }
+    #screen-between.active { display: flex; }
 
     /* ── Menu Screen ── */
     #screen-menu {
@@ -745,6 +746,13 @@
   </div>
 </div>
 
+<!-- Screen: Between Rounds (guessers wait while painter picks word) -->
+<div id="screen-between" class="screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px 20px;">
+  <div style="font-size:1.1rem;letter-spacing:3px;color:#888;text-transform:uppercase;margin-bottom:16px;">Next Round</div>
+  <div style="font-size:2rem;color:#d4af37;font-weight:bold;letter-spacing:2px;margin-bottom:8px;" id="between-rounds-painter">—</div>
+  <div id="between-rounds-wait" style="font-size:1rem;color:#aaa;">is choosing a word…</div>
+</div>
+
 <!-- Screen 5: Game Over -->
 <div id="screen-over" class="screen">
   <div class="over-title" id="over-title">GAME OVER — The answer was:</div>
@@ -1102,13 +1110,22 @@ function handleMessage(msg) {
       showScreen('screen-word-pick');
       break;
 
-    case 'pic_waiting_word':
+    case 'pic_waiting_word': {
       myRole = 'guesser';
-      document.getElementById('lobby-hint').textContent =
-        `Waiting for ${escHtml(msg.painterName)} to choose a word...`;
-      document.getElementById('btn-start').style.display = 'none';
-      showScreen('screen-lobby');
+      // Show a simple full-screen waiting state — no lobby needed between rounds
+      const waitDiv = document.getElementById('between-rounds-wait');
+      if (waitDiv) {
+        document.getElementById('between-rounds-painter').textContent = msg.painterName;
+        showScreen('screen-between');
+      } else {
+        // Fallback: update lobby hint and show lobby
+        document.getElementById('lobby-hint').textContent =
+          `Waiting for ${escHtml(msg.painterName)} to choose a word...`;
+        document.getElementById('btn-start').style.display = 'none';
+        showScreen('screen-lobby');
+      }
       break;
+    }
 
     case 'pic_start_game': {
       myRole = msg.role;

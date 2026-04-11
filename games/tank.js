@@ -9,15 +9,12 @@ const TANK_SPEED   = 2.4;          // px/tick forward
 const TANK_BACK    = 1.4;          // px/tick backward
 const TANK_ROT     = 3.5;          // degrees/tick (keyboard)
 const TANK_ROT_JOY = 8;            // degrees/tick (joystick — snappier)
-const OVERHEAT_MAX = 10;           // bullets before overheat
-const OVERHEAT_MS  = 6000;         // cooldown duration
+const SHOT_CD      = 2000;         // cooldown after every shot (normal)
+const RAPID_CD     = 1000;         // cooldown when rapid-fire powerup active
 const BULLET_SPEED = 8;
 const BULLET_R     = 5;
 const BULLET_LIFE  = 140;          // ticks (~4.6 s at 33ms)
-const BULLET_MAX_BOUNCES = 3;      // wall bounces before dying
-const FIRE_CD      = 700;          // ms between shots (human keyboard)
-const JOY_FIRE_CD  = 3000;         // ms between shots (joystick tap)
-const AI_FIRE_CD   = 3000;         // ms between shots (AI)
+const BULLET_MAX_BOUNCES = 3;      // wall bounces before dying (normal bullets)
 const HP_MAX       = 5;
 const TICK_MS      = 33;           // ~30 fps
 const MAX_PLAYERS  = 4;
@@ -174,7 +171,6 @@ function startGame(s) {
     p.input       = { up: false, down: false, left: false, right: false, fire: false,
                       joyAngle: null, joyMag: 0, fireJoyAngle: null };
     p.lastFire    = 0;
-    p.bulletCount = 0;
     p.overheatEnd = 0;
     p.vel         = 0;
     p.shield      = false;
@@ -336,9 +332,8 @@ function tick(s) {
       p.turretAngle = p.angle;
     }
 
-    // Keyboard / AI fire (Space — cooldown-limited)
-    if (p.input.fire && now - p.lastFire >= (p.isAI ? AI_FIRE_CD : FIRE_CD) &&
-        (p.rapidFire || now >= p.overheatEnd)) {
+    // Keyboard / AI fire — gated by per-shot cooldown (overheatEnd)
+    if (p.input.fire && now >= p.overheatEnd) {
       tryFire(s, p, now);
     }
 
@@ -386,7 +381,7 @@ function tick(s) {
     if (b.y - BULLET_R < 0)    { b.y = BULLET_R;      b.vy =  Math.abs(b.vy); wall = true; }
     if (b.y + BULLET_R > H)    { b.y = H - BULLET_R;  b.vy = -Math.abs(b.vy); wall = true; }
     if (wall) {
-      if (b.bounces >= BULLET_MAX_BOUNCES) { dead.add(i); continue; }
+      if (b.bounces >= b.bounceLimit) { dead.add(i); continue; }
       b.bounces++;
     }
 
@@ -452,8 +447,9 @@ function tick(s) {
       turretAngle: Math.round(p.turretAngle * 10) / 10,
       hp: p.hp,
       alive: p.alive,
-      heat: p.bulletCount,
-      overheated: !p.rapidFire && now < p.overheatEnd,
+      cooldownEnd: p.overheatEnd,
+      overheated: now < p.overheatEnd,
+      rapidFire: !!p.rapidFire,
       shield: p.shield,
       powerupType: p.powerupType || null,
       powerupEnd: p.powerupEnd,
@@ -466,37 +462,34 @@ function tick(s) {
 }
 
 // ── Fire helpers ──────────────────────────────────────────────────────────────
-function spawnBullet(s, p, angle) {
+function spawnBullet(s, p, angle, isRapid) {
   const rad = deg2rad(angle);
+  const spd = isRapid ? BULLET_SPEED * 0.5 : BULLET_SPEED;
   s.bullets.push({
     x: p.x + Math.sin(rad) * (TANK_H / 2 + BULLET_R + 2),
     y: p.y - Math.cos(rad) * (TANK_H / 2 + BULLET_R + 2),
-    vx: Math.sin(rad) * BULLET_SPEED,
-    vy: -Math.cos(rad) * BULLET_SPEED,
+    vx: Math.sin(rad) * spd,
+    vy: -Math.cos(rad) * spd,
     owner: p.name,
     life: BULLET_LIFE,
     bounces: 0,
+    bounceLimit: isRapid ? 0 : BULLET_MAX_BOUNCES,
   });
 }
 
 function tryFire(s, p, now) {
-  p.lastFire = now;
+  const cd = p.rapidFire ? RAPID_CD : SHOT_CD;
+  p.lastFire    = now;
+  p.overheatEnd = now + cd;
   (s.firedThisTick = s.firedThisTick || []).push(p.name);
   if (p.spreadShot) {
-    spawnBullet(s, p, p.turretAngle - 15);
-    spawnBullet(s, p, p.turretAngle);
-    spawnBullet(s, p, p.turretAngle + 15);
+    spawnBullet(s, p, p.turretAngle - 15, p.rapidFire);
+    spawnBullet(s, p, p.turretAngle,       p.rapidFire);
+    spawnBullet(s, p, p.turretAngle + 15,  p.rapidFire);
   } else {
-    spawnBullet(s, p, p.turretAngle);
+    spawnBullet(s, p, p.turretAngle, p.rapidFire);
   }
-  if (!p.rapidFire) {
-    p.bulletCount++;
-    if (p.bulletCount >= OVERHEAT_MAX) {
-      p.bulletCount = 0;
-      p.overheatEnd = now + OVERHEAT_MS;
-      bcast(s, { type: 'tank_overheat', name: p.name, duration: OVERHEAT_MS });
-    }
-  }
+  bcast(s, { type: 'tank_overheat', name: p.name, duration: cd });
 }
 
 // ── Power-ups ─────────────────────────────────────────────────────────────────
@@ -511,7 +504,7 @@ function applyPowerup(s, p, type, now) {
   if (type === 'speed')  { p.speedBoost = 1.7; }
   if (type === 'shield') { p.shield = true; p.powerupEnd = now + 1; } // shield is instant, no timer
   if (type === 'spread') { p.spreadShot = true; }
-  if (type === 'rapid')  { p.rapidFire = true; p.bulletCount = 0; p.overheatEnd = 0; }
+  if (type === 'rapid')  { p.rapidFire = true; p.overheatEnd = 0; } // clear any existing cooldown
 
   bcast(s, { type: 'tank_powerup', name: p.name, puType: type,
              duration: type === 'shield' ? 0 : POWERUP_DURATION });
@@ -622,8 +615,7 @@ wss.on('connection', ws => {
     } else if (msg.type === 'tank_fire') {
       if (!me || sess.state !== 'playing' || !me.alive) return;
       const fNow = Date.now();
-      if (fNow - me.lastFire < JOY_FIRE_CD) return;
-      if (!me.rapidFire && fNow < me.overheatEnd) return;
+      if (fNow < me.overheatEnd) return; // still in per-shot cooldown
       if (typeof msg.angle === 'number') {
         me.input.fireJoyAngle = msg.angle;
         me.turretAngle = msg.angle;
@@ -648,7 +640,7 @@ wss.on('connection', ws => {
       for (const p of sess.players) {
         p.input = { up: false, down: false, left: false, right: false, fire: false,
                     joyAngle: null, joyMag: 0, fireJoyAngle: null };
-        p.vel = 0; p.bulletCount = 0; p.overheatEnd = 0;
+        p.vel = 0; p.overheatEnd = 0;
         p.shield = false; p.speedBoost = 1; p.spreadShot = false;
         p.rapidFire = false; p.powerupType = null; p.powerupEnd = 0;
         if (p.isAI && p.ai) p.ai.jitterTime = 0;
@@ -699,7 +691,7 @@ function mkPlayer(ws, name, idx) {
     x: 0, y: 0, angle: 0,
     hp: HP_MAX, alive: false,
     input: { up: false, down: false, left: false, right: false, fire: false },
-    lastFire: 0, vel: 0,
+    lastFire: 0, overheatEnd: 0, vel: 0,
     shield: false, speedBoost: 1,
     spreadShot: false, rapidFire: false,
     powerupType: null, powerupEnd: 0,

@@ -297,9 +297,9 @@ function handle(msg) {
       }
       updateHud();
       renderGame();
-      // Track overheat state per tank
+      // Sync client-side overheatEnd for turret glow (cooldownEnd from tank_g is the ground truth)
       for (const t of tanks) {
-        if (t.overheated) overheatEnd[t.name] = Date.now() + 100;
+        if (t.cooldownEnd && t.cooldownEnd > Date.now()) overheatEnd[t.name] = t.cooldownEnd;
       }
       break;
     }
@@ -490,11 +490,13 @@ function hpHtml(hp, alive) {
   return s;
 }
 
-function heatHtml(heat, overheated) {
-  if (overheated) return '<span style="font-size:.65rem;color:#ff9800;letter-spacing:1px">🔥HOT</span>';
-  const pct = Math.round((heat / 10) * 100);
-  const col = pct > 70 ? '#ff6b00' : pct > 40 ? '#ffa726' : '#66bb6a';
-  return `<span style="display:inline-block;width:30px;height:5px;background:#333;border-radius:3px;vertical-align:middle;margin-left:4px"><span style="display:block;width:${pct}%;height:100%;background:${col};border-radius:3px"></span></span>`;
+function cooldownHtml(cooldownEnd, rapidFire) {
+  const rem = Math.max(0, cooldownEnd - Date.now());
+  if (!rem) return '';
+  const cd  = rapidFire ? 1000 : 2000;
+  const pct = Math.round(rem / cd * 100);
+  return `<span style="display:inline-block;width:30px;height:5px;background:#333;border-radius:3px;vertical-align:middle;margin-left:4px">`
+       + `<span style="display:block;width:${pct}%;height:100%;background:#ef5350;border-radius:3px"></span></span>`;
 }
 
 function powerupHtml(type, end) {
@@ -512,7 +514,7 @@ function powerupHtml(type, end) {
 function updateHud() {
   for (const t of tanks) {
     const hp = document.getElementById(`hud-hp-${t.name}`);
-    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + heatHtml(t.heat || 0, t.overheated) + powerupHtml(t.powerupType, t.powerupEnd);
+    if (hp) hp.innerHTML = hpHtml(t.hp, t.alive) + cooldownHtml(t.cooldownEnd || 0, t.rapidFire) + powerupHtml(t.powerupType, t.powerupEnd);
   }
 }
 
@@ -1068,11 +1070,11 @@ makeJoystick(
     if (isFirst) {
       // Fire immediately on any touch; fall back to last aimed direction if in deadzone
       if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
-      // Keep firing every 3 s while held
+      // Try to fire every 1 s while held; server cooldown enforces actual rate (2 s normal, 1 s rapid)
       clearInterval(autoFireInterval);
       autoFireInterval = setInterval(() => {
         if (fireJoyAngle !== null) wsSend({ type: 'tank_fire', angle: fireJoyAngle });
-      }, 3000);
+      }, 1000);
     }
   },
   () => {

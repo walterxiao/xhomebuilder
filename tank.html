@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tank Battle · Game Hub</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0d5c1;font-family:'Segoe UI',Georgia,sans-serif;height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+.screen{display:none;flex-direction:column;height:100vh;height:100dvh}
+.screen.active{display:flex}
+
+/* ── Name overlay ── */
+#name-overlay{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center}
+.nov-card{background:#16213e;border:1px solid #2a2a5a;border-radius:10px;padding:40px 36px;text-align:center;width:min(90vw,320px)}
+.nov-logo{font-size:3rem;margin-bottom:8px}
+.nov-title{font-size:1.1rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase;margin-bottom:6px}
+.nov-sub{font-size:.78rem;color:#555577;letter-spacing:2px;margin-bottom:22px}
+.nov-card input{width:100%;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:10px 12px;font-size:1rem;font-family:inherit;outline:none;margin-bottom:12px}
+.nov-card input:focus{border-color:#d4af37}
+.nov-card button{width:100%;background:#d4af37;border:none;border-radius:4px;color:#1a1a2e;padding:11px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase}
+.nov-card button:hover{background:#f0c040}
+
+/* ── Shared ── */
+.screen-content{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:24px;gap:18px;text-align:center}
+.screen-title{font-size:1.8rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;text-shadow:0 0 20px rgba(212,175,55,.4)}
+.screen-sub{font-size:.8rem;color:#7070a0;letter-spacing:2px;text-transform:uppercase}
+
+/* ── Buttons ── */
+.btn-primary{background:#d4af37;color:#1a1a2e;border:none;border-radius:6px;padding:13px 28px;font-size:.95rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:background .15s}
+.btn-primary:hover{background:#f0c040}
+.btn-primary:disabled{background:#555;color:#888;cursor:not-allowed}
+.btn-secondary{background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:6px;padding:11px 24px;font-size:.9rem;font-family:inherit;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s}
+.btn-secondary:hover{border-color:#d4af37;color:#d4af37}
+.btn-link{color:#555577;font-size:.82rem;letter-spacing:2px;text-decoration:none;text-transform:uppercase;padding:8px;background:none;border:none;cursor:pointer}
+.btn-link:hover{color:#d4af37}
+
+/* ── Lobby screen ── */
+#screen-lobby .screen-content{justify-content:flex-start;padding-top:32px;overflow-y:auto}
+#sessions-list{width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px}
+.session-card{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left}
+.session-info .s-host{font-size:.88rem;color:#c0c0e0;margin-bottom:3px}
+.session-info .s-label{font-size:.75rem;color:#555577;letter-spacing:1px}
+.session-btns{display:flex;gap:6px;flex-shrink:0}
+.session-btns button{border:none;border-radius:5px;padding:7px 14px;font-size:.8rem;font-family:inherit;cursor:pointer;letter-spacing:1px;font-weight:bold;text-transform:uppercase}
+.btn-join-s{background:#4fc3f7;color:#1a1a2e}
+.btn-join-s:hover{background:#81d4fa}
+.btn-obs-s{background:#2a3a5e;color:#c0c0e0;border:1px solid #3a4a7a !important}
+.btn-obs-s:hover{background:#3a4a7a}
+#no-sessions{color:#444466;font-size:.85rem;letter-spacing:2px;text-transform:uppercase}
+
+/* ── Waiting screen ── */
+.player-list{width:100%;max-width:340px;display:flex;flex-direction:column;gap:8px}
+.player-row{display:flex;align-items:center;gap:10px;background:#16213e;border-radius:6px;padding:10px 14px}
+.player-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.player-name-w{font-size:.9rem;color:#c0c0e0}
+.player-row.empty .player-name-w{color:#333355;font-style:italic}
+
+/* ── Game screen ── */
+#screen-game{background:#0d0d1a}
+#hud{height:40px;flex-shrink:0;background:#16213e;border-bottom:1px solid #2a2a5a;display:flex;align-items:center;justify-content:center;gap:24px}
+.hud-player{display:flex;align-items:center;gap:6px;font-size:.78rem}
+.hud-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.hud-name{color:#9090b0;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-hp{display:flex;gap:2px}
+.hud-heart{font-size:.7rem}
+.hud-heart.dead{opacity:.18}
+#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;position:relative}
+#canvas{display:block;max-width:100%;max-height:100%;image-rendering:pixelated}
+#flash-msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#d4af37;font-size:1.1rem;letter-spacing:3px;text-transform:uppercase;padding:12px 28px;border-radius:8px;border:1px solid #d4af37;pointer-events:none;opacity:0;transition:opacity .4s;text-align:center}
+#flash-msg.show{opacity:1}
+
+/* ── Mobile controls ── */
+#ctrl-area{flex-shrink:0;background:#16213e;border-top:1px solid #2a2a5a;padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;gap:12px}
+.obs-mode #ctrl-area{display:none}
+.dpad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,48px);gap:4px}
+.dpad button{border:none;border-radius:8px;background:#1e2e50;color:#c0c0e0;font-size:1.3rem;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;display:flex;align-items:center;justify-content:center}
+.dpad button:active,.dpad button.pressed{background:#3a5090}
+.dpad .d-up{grid-column:2}
+.dpad .d-left{grid-column:1;grid-row:2}
+.dpad .d-down{grid-column:2;grid-row:2}
+.dpad .d-right{grid-column:3;grid-row:2}
+#fire-btn{width:88px;height:88px;border-radius:50%;background:#b71c1c;color:#fff;font-size:1rem;font-weight:bold;letter-spacing:1px;border:3px solid #ef5350;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;transition:background .1s;text-transform:uppercase;font-family:inherit}
+#fire-btn:active,#fire-btn.pressed{background:#ef5350}
+
+/* ── Game over ── */
+.winner-badge{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-top:4px}
+.winner-dot{display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;margin-right:8px;margin-bottom:2px}
+
+/* ── Responsive ── */
+@media(max-width:480px){
+  .screen-title{font-size:1.3rem;letter-spacing:4px}
+}
+</style>
+</head>
+<body>
+
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-logo">🎯</div>
+    <div class="nov-title">Tank Battle</div>
+    <div class="nov-sub">Enter your name to play</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
+<!-- Lobby -->
+<div class="screen active" id="screen-lobby">
+  <div class="screen-content">
+    <div class="screen-title">🎯 Tank Battle</div>
+    <div class="screen-sub">Destroy all opponents to win</div>
+    <div id="sessions-list"><div id="no-sessions">No open sessions</div></div>
+    <button class="btn-primary" id="btn-create">Create Game</button>
+    <button class="btn-link" onclick="location.href='/'">← Back to Hub</button>
+  </div>
+</div>
+
+<!-- Waiting room -->
+<div class="screen" id="screen-waiting">
+  <div class="screen-content">
+    <div class="screen-title">Waiting Room</div>
+    <div class="screen-sub" id="waiting-sub">Waiting for players…</div>
+    <div class="player-list" id="player-list"></div>
+    <button class="btn-primary" id="btn-start" disabled>Start Game</button>
+    <div class="screen-sub" id="obs-hint" style="display:none">You are watching</div>
+    <button class="btn-link" id="btn-leave">Leave</button>
+  </div>
+</div>
+
+<!-- Game -->
+<div class="screen" id="screen-game">
+  <div id="hud"></div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="flash-msg"></div>
+  </div>
+  <div id="ctrl-area">
+    <div class="dpad">
+      <button class="d-up"    data-dir="up">▲</button>
+      <button class="d-left"  data-dir="left">◀</button>
+      <button class="d-down"  data-dir="down">▼</button>
+      <button class="d-right" data-dir="right">▶</button>
+    </div>
+    <button id="fire-btn">🔥 Fire</button>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="screen" id="screen-over">
+  <div class="screen-content">
+    <div class="screen-title">Game Over</div>
+    <div id="over-winner" class="winner-badge"></div>
+    <button class="btn-primary" id="btn-rematch">Play Again</button>
+    <button class="btn-link" id="btn-quit">Quit to Lobby</button>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let myName = '';
+let ws = null;
+let myColor = null;
+let isHost = false;
+let isObs = false;
+let gameW = 800, gameH = 560;
+
+// Game render state
+let tanks = [];     // { name, color, x, y, angle, hp, alive }
+let bullets = [];   // { x, y }
+let colorMap = {};  // name → color
+
+// Input state
+const keys = { up: false, down: false, left: false, right: false, fire: false };
+let lastInputSent = {};
+
+// ── Screens ───────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Name setup ────────────────────────────────────────────────────────────────
+(function () {
+  function submit() {
+    const v = document.getElementById('nov-input').value.trim();
+    if (!v) { document.getElementById('nov-input').focus(); return; }
+    myName = v;
+    localStorage.setItem('phub_name', v);
+    document.getElementById('name-overlay').style.display = 'none';
+    connectWS();
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    myName = saved;
+    document.getElementById('nov-input').value = saved;
+    document.getElementById('name-overlay').style.display = 'none';
+    connectWS();
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/tank`);
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => { if (document.getElementById('screen-game').classList.contains('active')) showScreen('screen-lobby'); };
+}
+
+function wsSend(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handle(msg) {
+  switch (msg.type) {
+
+    case 'tank_lobby':
+      renderSessions(msg);
+      break;
+
+    case 'tank_joined':
+      myColor = msg.color;
+      isObs = false;
+      gameW = msg.W; gameH = msg.H;
+      isHost = !!msg.isHost;
+      document.getElementById('btn-start').disabled = !isHost || !msg.canStart;
+      document.getElementById('obs-hint').style.display = 'none';
+      document.getElementById('btn-start').style.display = '';
+      showScreen('screen-waiting');
+      break;
+
+    case 'tank_obs_joined':
+      isObs = true;
+      gameW = msg.W; gameH = msg.H;
+      document.getElementById('obs-hint').style.display = '';
+      document.getElementById('btn-start').style.display = 'none';
+      // If game already playing, jump to game screen
+      if (msg.state === 'playing' && msg.players) {
+        tanks = msg.players;
+        for (const t of tanks) colorMap[t.name] = t.color;
+        showScreen('screen-game');
+        resizeCanvas();
+        renderGame();
+      } else {
+        showScreen('screen-waiting');
+      }
+      break;
+
+    case 'tank_start':
+      tanks = msg.players;
+      bullets = [];
+      for (const t of tanks) colorMap[t.name] = t.color;
+      gameW = msg.W; gameH = msg.H;
+      resizeCanvas();
+      buildHud();
+      showScreen('screen-game');
+      flash('GO!', 1200);
+      document.getElementById('screen-game').classList.toggle('obs-mode', isObs);
+      break;
+
+    case 'tank_g':
+      tanks = msg.tanks;
+      bullets = msg.bullets;
+      for (const t of tanks) if (colorMap[t.name]) {} else colorMap[t.name] = '#aaa';
+      updateHud();
+      renderGame();
+      break;
+
+    case 'tank_hit':
+      // Flash handled via tank_g hp update
+      break;
+
+    case 'tank_destroyed':
+      flash(`${msg.name} destroyed!`, 1500);
+      break;
+
+    case 'tank_left':
+      flash(`${msg.name} left`, 1200);
+      showScreen('screen-waiting');
+      break;
+
+    case 'tank_over': {
+      const w = msg.winner;
+      const col = w ? (colorMap[w] || '#d4af37') : '#aaa';
+      document.getElementById('over-winner').innerHTML = w
+        ? `<span class="winner-dot" style="background:${col}"></span>${esc(w)} wins!`
+        : 'Draw!';
+      showScreen('screen-over');
+      break;
+    }
+
+    case 'tank_rematch':
+      bullets = [];
+      tanks = [];
+      showScreen('screen-waiting');
+      break;
+
+    case 'tank_error':
+      alert(msg.text || 'Error');
+      break;
+  }
+
+  // Update waiting room player list for lobby messages
+  if (msg.type === 'tank_lobby') updateWaitingRoom(msg);
+}
+
+// ── Session list ──────────────────────────────────────────────────────────────
+function renderSessions(msg) {
+  // This fires when we get tank_lobby from server — check if it has sessions
+  // We do a fetch to get session list
+  fetchSessions();
+}
+
+let sessionsFetching = false;
+function fetchSessions() {
+  if (sessionsFetching) return;
+  sessionsFetching = true;
+  fetch('/api/tank/sessions').then(r => r.json()).then(list => {
+    sessionsFetching = false;
+    const container = document.getElementById('sessions-list');
+    const noEl = document.getElementById('no-sessions');
+    if (!list.length) {
+      noEl.style.display = '';
+      // Remove any old session cards
+      container.querySelectorAll('.session-card').forEach(el => el.remove());
+      return;
+    }
+    noEl.style.display = 'none';
+    container.querySelectorAll('.session-card').forEach(el => el.remove());
+    for (const s of list) {
+      const card = document.createElement('div');
+      card.className = 'session-card';
+      card.innerHTML = `
+        <div class="session-info">
+          <div class="s-host">${esc(s.hostName)}'s game</div>
+          <div class="s-label">${esc(s.label)} · ${esc(s.status)}</div>
+        </div>
+        <div class="session-btns">
+          ${s.canJoin ? `<button class="btn-join-s" data-sid="${s.id}">Join</button>` : ''}
+          ${s.canObserve ? `<button class="btn-obs-s" data-sid="${s.id}" data-obs="1">Watch</button>` : ''}
+        </div>`;
+      container.appendChild(card);
+    }
+    container.querySelectorAll('.btn-join-s').forEach(b => b.onclick = () => doJoin());
+    container.querySelectorAll('.btn-obs-s').forEach(b => b.onclick = () => doObserve());
+  }).catch(() => { sessionsFetching = false; });
+}
+
+// Poll sessions while on lobby screen
+setInterval(() => {
+  if (document.getElementById('screen-lobby').classList.contains('active')) fetchSessions();
+}, 2000);
+
+// ── Waiting room ──────────────────────────────────────────────────────────────
+function updateWaitingRoom(msg) {
+  if (!document.getElementById('screen-waiting').classList.contains('active')) return;
+  const list = document.getElementById('player-list');
+  list.innerHTML = '';
+  const MAX = 4;
+  const players = msg.players || [];
+  for (let i = 0; i < MAX; i++) {
+    const row = document.createElement('div');
+    if (i < players.length) {
+      row.className = 'player-row';
+      row.innerHTML = `<div class="player-dot" style="background:${esc(players[i].color)}"></div>
+        <div class="player-name-w">${esc(players[i].name)}${i === 0 ? ' (host)' : ''}</div>`;
+    } else {
+      row.className = 'player-row empty';
+      row.innerHTML = `<div class="player-dot" style="background:#222"></div>
+        <div class="player-name-w">Waiting…</div>`;
+    }
+    list.appendChild(row);
+  }
+  if (isHost) {
+    document.getElementById('btn-start').disabled = players.length < 2;
+  }
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+function buildHud() {
+  const hud = document.getElementById('hud');
+  hud.innerHTML = '';
+  for (const t of tanks) {
+    const div = document.createElement('div');
+    div.className = 'hud-player';
+    div.id = `hud-${t.name}`;
+    div.innerHTML = `<div class="hud-dot" style="background:${esc(t.color)}"></div>
+      <div class="hud-name">${esc(t.name)}</div>
+      <div class="hud-hp" id="hud-hp-${t.name}">${hpHtml(t.hp, t.alive)}</div>`;
+    hud.appendChild(div);
+  }
+}
+
+function hpHtml(hp, alive) {
+  let s = '';
+  for (let i = 0; i < 3; i++) s += `<span class="hud-heart${i < hp && alive ? '' : ' dead'}">♥</span>`;
+  return s;
+}
+
+function updateHud() {
+  for (const t of tanks) {
+    const el = document.getElementById(`hud-hp-${t.name}`);
+    if (el) el.innerHTML = hpHtml(t.hp, t.alive);
+  }
+}
+
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth;
+  const maxH = wrap.clientHeight;
+  const scale = Math.min(maxW / gameW, maxH / gameH);
+  canvas.width  = gameW;
+  canvas.height = gameH;
+  canvas.style.width  = Math.floor(gameW * scale) + 'px';
+  canvas.style.height = Math.floor(gameH * scale) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+
+function renderGame() {
+  const W = gameW, H = gameH;
+  ctx.clearRect(0, 0, W, H);
+
+  // Arena background
+  ctx.fillStyle = '#0d1b0d';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a2e1a';
+  ctx.lineWidth = 1;
+  const GS = 60;
+  for (let x = 0; x <= W; x += GS) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += GS) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  // Arena border
+  ctx.strokeStyle = '#2e4a2e';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+
+  // Bullets
+  for (const b of bullets) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffee58';
+    ctx.fill();
+    ctx.strokeStyle = '#f9a825';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Tanks
+  for (const t of tanks) {
+    if (!t.alive) continue;
+    drawTank(ctx, t);
+  }
+
+  // Dead tanks (faded X)
+  for (const t of tanks) {
+    if (t.alive) continue;
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    drawTank(ctx, t);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // X mark
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.strokeStyle = '#ef5350';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, -12); ctx.lineTo(-12, 12); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawTank(ctx, t) {
+  const TW = 34, TH = 44;
+  const rad = t.angle * Math.PI / 180;
+
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.rotate(rad);
+
+  // Tank tracks (slightly wider dark rects on sides)
+  ctx.fillStyle = '#333';
+  ctx.fillRect(-TW / 2 - 3, -TH / 2, 8, TH);
+  ctx.fillRect( TW / 2 - 5, -TH / 2, 8, TH);
+
+  // Tank body
+  ctx.fillStyle = t.color;
+  ctx.fillRect(-TW / 2, -TH / 2, TW, TH);
+
+  // Body border
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-TW / 2, -TH / 2, TW, TH);
+
+  // Turret ring
+  ctx.beginPath();
+  ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  ctx.fillStyle = shadeColor(t.color, -30);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Barrel
+  ctx.fillStyle = shadeColor(t.color, -50);
+  ctx.fillRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-4, -TH / 2 - 8, 8, TH / 2 + 2);
+
+  ctx.restore();
+
+  // Name label
+  ctx.save();
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillText(t.name, t.x, t.y + TH / 2 + 14 + 1);
+  ctx.fillStyle = '#e0e0e0';
+  ctx.fillText(t.name, t.x, t.y + TH / 2 + 14);
+  ctx.restore();
+}
+
+function shadeColor(hex, pct) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, ((n >> 16) & 0xff) + pct));
+  const g = Math.max(0, Math.min(255, ((n >>  8) & 0xff) + pct));
+  const b = Math.max(0, Math.min(255, ((n >>  0) & 0xff) + pct));
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+}
+
+// ── Flash message ─────────────────────────────────────────────────────────────
+let flashTimer = null;
+function flash(txt, ms) {
+  const el = document.getElementById('flash-msg');
+  el.textContent = txt;
+  el.classList.add('show');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), ms || 1500);
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const KEY_MAP = {
+  ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  Space: 'fire',
+};
+
+document.addEventListener('keydown', e => {
+  const dir = KEY_MAP[e.code];
+  if (!dir) return;
+  e.preventDefault();
+  keys[dir] = true;
+  sendInput();
+});
+document.addEventListener('keyup', e => {
+  const dir = KEY_MAP[e.code];
+  if (!dir) return;
+  keys[dir] = false;
+  sendInput();
+});
+
+function sendInput() {
+  if (isObs || !ws) return;
+  // Only send if changed
+  const cur = { up: keys.up, down: keys.down, left: keys.left, right: keys.right, fire: keys.fire };
+  if (JSON.stringify(cur) === JSON.stringify(lastInputSent)) return;
+  lastInputSent = { ...cur };
+  wsSend({ type: 'tank_in', ...cur });
+}
+
+// Mobile D-pad
+document.querySelectorAll('.dpad button').forEach(btn => {
+  const dir = btn.dataset.dir;
+  const activate = () => { keys[dir] = true; btn.classList.add('pressed'); sendInput(); };
+  const deactivate = () => { keys[dir] = false; btn.classList.remove('pressed'); sendInput(); };
+  btn.addEventListener('touchstart', e => { e.preventDefault(); activate(); }, { passive: false });
+  btn.addEventListener('touchend',   e => { e.preventDefault(); deactivate(); }, { passive: false });
+  btn.addEventListener('mousedown',  activate);
+  btn.addEventListener('mouseup',    deactivate);
+  btn.addEventListener('mouseleave', deactivate);
+});
+
+// Fire button
+const fireBtn = document.getElementById('fire-btn');
+const fireActivate = () => { keys.fire = true; fireBtn.classList.add('pressed'); sendInput(); };
+const fireDeactivate = () => { keys.fire = false; fireBtn.classList.remove('pressed'); sendInput(); };
+fireBtn.addEventListener('touchstart', e => { e.preventDefault(); fireActivate(); }, { passive: false });
+fireBtn.addEventListener('touchend',   e => { e.preventDefault(); fireDeactivate(); }, { passive: false });
+fireBtn.addEventListener('mousedown',  fireActivate);
+fireBtn.addEventListener('mouseup',    fireDeactivate);
+fireBtn.addEventListener('mouseleave', fireDeactivate);
+
+// ── Button actions ────────────────────────────────────────────────────────────
+document.getElementById('btn-create').onclick = () => {
+  wsSend({ type: 'tank_create', name: myName });
+};
+
+function doJoin() {
+  wsSend({ type: 'tank_join', name: myName });
+}
+function doObserve() {
+  isObs = true;
+  wsSend({ type: 'tank_join', name: myName }); // server handles overflow → observe
+}
+
+document.getElementById('btn-start').onclick = () => {
+  wsSend({ type: 'tank_start' });
+};
+
+document.getElementById('btn-rematch').onclick = () => {
+  wsSend({ type: 'tank_rematch' });
+};
+
+document.getElementById('btn-leave').onclick = () => {
+  if (ws) { ws.close(); ws = null; }
+  connectWS();
+  showScreen('screen-lobby');
+};
+
+document.getElementById('btn-quit').onclick = () => {
+  if (ws) { ws.close(); ws = null; }
+  connectWS();
+  showScreen('screen-lobby');
+};
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

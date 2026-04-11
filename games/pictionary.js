@@ -223,10 +223,10 @@ function startNextGame(session, sessionId) {
   const allPlayers = getAllPlayers(session).filter(p => p.ws.readyState === 1);
   if (allPlayers.length < 2) return false;
 
-  // Randomly pick painter, excluding last game's painter
-  const eligible = allPlayers.filter(p => p.name !== session.lastPainterName);
-  const pool = eligible.length > 0 ? eligible : allPlayers;
-  const newPainter = pool[Math.floor(Math.random() * pool.length)];
+  // Rotate painter in join order: find last painter's position, take the next one
+  const lastIdx = allPlayers.findIndex(p => p.name === session.lastPainterName);
+  const nextIdx = lastIdx < 0 ? 0 : (lastIdx + 1) % allPlayers.length;
+  const newPainter = allPlayers[nextIdx];
   const newGuessers = allPlayers.filter(p => p !== newPainter);
 
   // Reassign roles

@@ -8,16 +8,16 @@ const BALL_R = 12;
 const PAD_H = 15;
 const TEAM0_Y = H - 60;   // blue team paddle top-y (bottom of table)
 const TEAM1_Y = 45;        // red team paddle top-y  (top of table)
-const PAD_SPEED = 8;
+const PAD_SPEED = 4;
 const PAD_W_SOLO = 160;
 const PAD_W_DUO  = 100;
-const INIT_SPEED = 6;
-const MAX_SPEED  = 13;
+const INIT_SPEED = 2;
+const MAX_SPEED  = 5;
 const SPIN_FACTOR = 0.12;
-const SPIN_DECAY  = 0.97;
-const SPIN_CURVE  = 0.25;
+const SPIN_DECAY  = 0.985;
+const SPIN_CURVE  = 0.12;
 const WIN   = 11;
-const TICK  = 16;          // ~60 fps
+const TICK  = 8;           // ~120 fps — smoother ball motion
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const send = (ws, o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
@@ -86,7 +86,7 @@ function serveBall(s) {
   // Team 0 (bottom, high y) serves upward → negative vy
   // Team 1 (top,    low y)  serves downward → positive vy
   const vy = s.serving === 0 ? -spd : spd;
-  const jitter = (Math.random() - 0.5) * 1.5;
+  const jitter = (Math.random() - 0.5) * 0.6;
   s.ball = { x: W / 2, y: H / 2, vx: jitter, vy, spin: 0, spd };
   bcast(s, { type: 'serve', serving: s.serving });
 }

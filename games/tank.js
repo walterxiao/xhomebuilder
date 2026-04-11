@@ -14,7 +14,8 @@ const OVERHEAT_MS  = 3000;         // cooldown duration
 const BULLET_SPEED = 8;
 const BULLET_R     = 5;
 const BULLET_LIFE  = 140;          // ticks (~4.6 s at 33ms)
-const FIRE_CD      = 700;          // ms between shots
+const FIRE_CD      = 700;          // ms between shots (human keyboard)
+const AI_FIRE_CD   = 2000;         // ms between shots (AI — matches joystick interval)
 const HP_MAX       = 5;
 const TICK_MS      = 33;           // ~30 fps
 const MAX_PLAYERS  = 4;
@@ -215,7 +216,7 @@ function tick(s) {
     }
 
     // Keyboard fire (Space — cooldown-limited)
-    if (p.input.fire && now - p.lastFire >= FIRE_CD && now >= p.overheatEnd) {
+    if (p.input.fire && now - p.lastFire >= (p.isAI ? AI_FIRE_CD : FIRE_CD) && now >= p.overheatEnd) {
       tryFire(s, p, now);
     }
   }

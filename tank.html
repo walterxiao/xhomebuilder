@@ -256,17 +256,18 @@ function handle(msg) {
       bullets = [];
       for (const t of tanks) colorMap[t.name] = t.color;
       gameW = msg.W; gameH = msg.H;
-      resizeCanvas();
       buildHud();
-      showScreen('screen-game');
+      showScreen('screen-game');   // must come before resizeCanvas so clientWidth is non-zero
+      resizeCanvas();
+      renderGame();
       flash('GO!', 1200);
       document.getElementById('screen-game').classList.toggle('obs-mode', isObs);
       break;
 
     case 'tank_g':
-      tanks = msg.tanks;
+      // Merge colors from colorMap — server omits color in per-frame updates
+      tanks = msg.tanks.map(t => ({ ...t, color: colorMap[t.name] || '#888' }));
       bullets = msg.bullets;
-      for (const t of tanks) if (colorMap[t.name]) {} else colorMap[t.name] = '#aaa';
       updateHud();
       renderGame();
       break;

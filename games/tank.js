@@ -19,6 +19,9 @@ const AI_FIRE_CD   = 2000;         // ms between shots (AI — matches joystick 
 const HP_MAX       = 5;
 const TICK_MS      = 33;           // ~30 fps
 const MAX_PLAYERS  = 4;
+const OBS_W        = 60;           // obstacle full width  (px)
+const OBS_H        = 40;           // obstacle full height (px)
+const OBS_HP       = 50;           // hits required to destroy
 
 // Spawn corners, facing inward (angle = degrees, 0 = up, clockwise)
 const SPAWNS = [
@@ -39,6 +42,24 @@ function bcast(s, o) {
 }
 const deg2rad = d => d * Math.PI / 180;
 
+// ── Obstacle generation ───────────────────────────────────────────────────────
+function genObstacles() {
+  const sp = 28; // random position spread (px)
+  const areas = [
+    { cx: W * 0.50, cy: H * 0.50 }, // centre
+    { cx: W * 0.72, cy: H * 0.25 }, // upper-right
+    { cx: W * 0.72, cy: H * 0.75 }, // lower-right
+    { cx: W * 0.28, cy: H * 0.25 }, // upper-left
+    { cx: W * 0.28, cy: H * 0.75 }, // lower-left
+  ];
+  return areas.map((a, id) => ({
+    id,
+    x: a.cx + (Math.random() - 0.5) * sp,
+    y: a.cy + (Math.random() - 0.5) * sp,
+    w: OBS_W, h: OBS_H, hp: OBS_HP,
+  }));
+}
+
 // ── Session management ────────────────────────────────────────────────────────
 let nextId = 1;
 const sessions = new Map();
@@ -50,6 +71,7 @@ function mkSess() {
     state: 'waiting',
     players: [], obs: [],
     bullets: [],
+    obstacles: [],
     interval: null,
   };
   sessions.set(s.id, s);
@@ -70,6 +92,7 @@ function lobbyData(s) {
 function startGame(s) {
   s.state = 'playing';
   s.bullets = [];
+  s.obstacles = genObstacles();
 
   for (let i = 0; i < s.players.length; i++) {
     const p = s.players[i];
@@ -94,6 +117,7 @@ function startGame(s) {
       name: p.name, color: p.color, isAI: !!p.isAI,
       x: p.x, y: p.y, angle: p.angle, turretAngle: p.turretAngle, hp: p.hp,
     })),
+    obstacles: s.obstacles,
     W, H,
   });
 
@@ -219,6 +243,23 @@ function tick(s) {
     if (p.input.fire && now - p.lastFire >= (p.isAI ? AI_FIRE_CD : FIRE_CD) && now >= p.overheatEnd) {
       tryFire(s, p, now);
     }
+
+    // Push tank out of obstacles
+    for (const obs of s.obstacles) {
+      const hw = obs.w / 2 + TANK_W / 2;
+      const hh = obs.h / 2 + TANK_H / 2;
+      const dx = p.x - obs.x;
+      const dy = p.y - obs.y;
+      if (Math.abs(dx) < hw && Math.abs(dy) < hh) {
+        const ox = hw - Math.abs(dx);
+        const oy = hh - Math.abs(dy);
+        if (ox < oy) {
+          p.x += dx >= 0 ? ox : -ox;
+        } else {
+          p.y += dy >= 0 ? oy : -oy;
+        }
+      }
+    }
   }
 
   // Move bullets & check collisions
@@ -241,6 +282,27 @@ function tick(s) {
       if (b.bounced) { dead.add(i); continue; }
       b.bounced = true;
     }
+
+    // Bullet hits obstacle
+    let hitObs = false;
+    for (let oi = s.obstacles.length - 1; oi >= 0; oi--) {
+      const obs = s.obstacles[oi];
+      const hw = obs.w / 2, hh = obs.h / 2;
+      if (b.x + BULLET_R > obs.x - hw && b.x - BULLET_R < obs.x + hw &&
+          b.y + BULLET_R > obs.y - hh && b.y - BULLET_R < obs.y + hh) {
+        dead.add(i);
+        hitObs = true;
+        obs.hp--;
+        if (obs.hp <= 0) {
+          s.obstacles.splice(oi, 1);
+          bcast(s, { type: 'tank_obs_destroyed', id: obs.id });
+        } else {
+          bcast(s, { type: 'tank_obs_hit', id: obs.id, hp: obs.hp });
+        }
+        break;
+      }
+    }
+    if (hitObs) continue;
 
     // Bullet hits tank (axis-aligned box check)
     for (const p of s.players) {
@@ -362,6 +424,7 @@ wss.on('connection', ws => {
         sess.obs.push({ ws, name });
         send(ws, { type: 'tank_obs_joined', W, H,
           players: sess.players.map(p => ({ name: p.name, color: p.color, x: p.x, y: p.y, angle: p.angle, hp: p.hp, alive: p.alive })),
+          obstacles: sess.obstacles || [],
           state: sess.state,
         });
         bcast(sess, lobbyData(sess));

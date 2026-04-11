@@ -164,6 +164,7 @@ let gameW = 800, gameH = 560;
 // Game render state
 let tanks = [];         // { name, color, x, y, angle, turretAngle, hp, alive, heat, overheated }
 let bullets = [];       // { x, y }
+let obstacles = [];     // { id, x, y, w, h, hp }
 let colorMap = {};      // name → color
 const overheatEnd = {}; // name → timestamp
 const smokes  = [];     // smoke particles
@@ -240,6 +241,7 @@ function handle(msg) {
       // If game already playing, jump to game screen
       if (msg.state === 'playing' && msg.players) {
         tanks = msg.players;
+        obstacles = msg.obstacles || [];
         for (const t of tanks) colorMap[t.name] = t.color;
         showScreen('screen-game');
         resizeCanvas();
@@ -252,6 +254,7 @@ function handle(msg) {
     case 'tank_start':
       tanks = msg.players;
       bullets = [];
+      obstacles = msg.obstacles || [];
       for (const t of tanks) colorMap[t.name] = t.color;
       gameW = msg.W; gameH = msg.H;
       buildHud();
@@ -288,6 +291,18 @@ function handle(msg) {
       // Flash handled via tank_g hp update
       break;
 
+    case 'tank_obs_hit': {
+      const o = obstacles.find(o => o.id === msg.id);
+      if (o) o.hp = msg.hp;
+      break;
+    }
+
+    case 'tank_obs_destroyed': {
+      const idx = obstacles.findIndex(o => o.id === msg.id);
+      if (idx >= 0) obstacles.splice(idx, 1);
+      break;
+    }
+
     case 'tank_destroyed':
       flash(`${msg.name} destroyed!`, 1500);
       break;
@@ -310,6 +325,7 @@ function handle(msg) {
     case 'tank_rematch':
       bullets = [];
       tanks = [];
+      obstacles = [];
       smokes.length = 0;
       showScreen('screen-waiting');
       break;
@@ -515,6 +531,9 @@ function renderGame() {
   ctx.lineWidth = 3;
   ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
 
+  // Obstacles
+  for (const obs of obstacles) drawObstacle(obs);
+
   // Bullets
   for (const b of bullets) {
     ctx.beginPath();
@@ -621,6 +640,37 @@ function drawTank(ctx, t) {
   ctx.fillStyle = '#e0e0e0';
   ctx.fillText(t.name, t.x, t.y + TH / 2 + 14);
   ctx.restore();
+}
+
+function drawObstacle(obs) {
+  const hw = obs.w / 2, hh = obs.h / 2;
+  const frac = obs.hp / 50; // 50 = OBS_HP
+
+  // Stone fill — darkens as hp drops
+  const base = Math.round(55 + frac * 55); // 55..110
+  ctx.fillStyle = `rgb(${base},${Math.round(base * 0.90)},${Math.round(base * 0.78)})`;
+  ctx.fillRect(obs.x - hw, obs.y - hh, obs.w, obs.h);
+
+  // Highlight (top-left edge lighter)
+  ctx.fillStyle = `rgba(255,255,255,${(0.08 + frac * 0.08).toFixed(2)})`;
+  ctx.fillRect(obs.x - hw, obs.y - hh, obs.w, 3);
+  ctx.fillRect(obs.x - hw, obs.y - hh, 3, obs.h);
+
+  // Border
+  ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(obs.x - hw, obs.y - hh, obs.w, obs.h);
+
+  // HP bar (only once damaged)
+  if (obs.hp < 50) {
+    const bw = obs.w * 0.78, bh = 4;
+    const bx = obs.x - bw / 2, by = obs.y + hh + 3;
+    ctx.fillStyle = '#222';
+    ctx.fillRect(bx, by, bw, bh);
+    const col = frac > 0.5 ? '#66bb6a' : frac > 0.25 ? '#ffa726' : '#ef5350';
+    ctx.fillStyle = col;
+    ctx.fillRect(bx, by, bw * frac, bh);
+  }
 }
 
 function shadeColor(hex, pct) {

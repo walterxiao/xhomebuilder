@@ -97,6 +97,12 @@ function requestHandler(req, res) {
     res.end(JSON.stringify(stats.getAll()));
     return;
   }
+  if (urlPath === '/api/hideandseek/click') {
+    stats.increment('hideandseek');
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (SESSION_APIS[urlPath]) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(SESSION_APIS[urlPath]()));

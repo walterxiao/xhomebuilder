@@ -321,11 +321,12 @@
       <div class="play-count" id="plays-tank"></div>
     </a>
 
-    <a href="http://xiaogamehub.com:1030" class="game-card" data-game="hideandseek">
+    <a href="http://xiaogamehub.com:1030" class="game-card" id="card-hideandseek" data-game="hideandseek">
       <div class="game-icon">🙈</div>
       <div class="game-title">Hide &amp; Seek</div>
       <div class="game-desc">One seeker, many hiders. Explore the map, stay out of sight, and be the last one found!</div>
       <div class="game-meta">multiplayer &nbsp;·&nbsp; real-time</div>
+      <div class="play-count" id="plays-hideandseek"></div>
     </a>
 
     <a href="/sudoku" class="game-card" data-game="sudoku">
@@ -434,6 +435,15 @@ fetch('/api/stats').then(r => r.json()).then(counts => {
   cards.sort((a, b) => (counts[b.dataset.game] || 0) - (counts[a.dataset.game] || 0));
   for (const card of cards) grid.appendChild(card);
 }).catch(() => {});
+
+// ── Hide & Seek click tracking ─────────────────────────────────────────────────
+document.getElementById('card-hideandseek').addEventListener('click', e => {
+  e.preventDefault();
+  const dest = e.currentTarget.href;
+  fetch('/api/hideandseek/click').catch(() => {}).finally(() => {
+    window.location.href = dest;
+  });
+});
 </script>
 </body>
 </html>

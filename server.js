@@ -3,9 +3,14 @@ const https = require('https');
 const fs   = require('fs');
 const path = require('path');
 
-const SSL_KEY  = process.env.SSL_KEY  || '/etc/letsencrypt/live/default/privkey.pem';
-const SSL_CERT = process.env.SSL_CERT || '/etc/letsencrypt/live/default/fullchain.pem';
-const tlsOpts  = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
+let tlsOpts = null;
+try {
+  const SSL_KEY  = process.env.SSL_KEY  || '/etc/letsencrypt/live/default/privkey.pem';
+  const SSL_CERT = process.env.SSL_CERT || '/etc/letsencrypt/live/default/fullchain.pem';
+  tlsOpts = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
+} catch (e) {
+  console.warn(`TLS certs not loaded (${e.message}); starting in HTTP mode.`);
+}
 
 const connect5   = require('./games/connect5');
 const airplane   = require('./games/airplane');
@@ -47,7 +52,7 @@ for (const [mod, game, types] of GAME_START_MSGS) {
   });
 }
 
-const PORT = process.env.PORT || 443;
+const PORT = process.env.PORT || (tlsOpts ? 443 : 9753);
 
 const PAGES = {
   '/':           'index.html',
@@ -67,7 +72,7 @@ const PAGES = {
 
 
 
-const httpsServer = https.createServer(tlsOpts, (req, res) => {
+function requestHandler(req, res) {
   const urlPath = req.url.split('?')[0];
   const SESSION_APIS = {
     '/api/connect5/sessions':   () => connect5.getSessionList(),
@@ -100,7 +105,11 @@ const httpsServer = https.createServer(tlsOpts, (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(data);
   });
-});
+}
+
+const httpsServer = tlsOpts
+  ? https.createServer(tlsOpts, requestHandler)
+  : http.createServer(requestHandler);
 
 httpsServer.on('upgrade', (req, socket, head) => {
   if (req.url === '/ws/connect5') {
@@ -161,10 +170,12 @@ httpsServer.on('upgrade', (req, socket, head) => {
 });
 
 httpsServer.listen(PORT, () => {
-  console.log(`Game Hub running → https://localhost:${PORT}`);
+  console.log(`Game Hub running → ${tlsOpts ? 'https' : 'http'}://localhost:${PORT}`);
 });
 
-http.createServer((req, res) => {
-  res.writeHead(301, { Location: 'https://' + req.headers.host + req.url });
-  res.end();
-}).listen(80);
+if (tlsOpts) {
+  http.createServer((req, res) => {
+    res.writeHead(301, { Location: 'https://' + req.headers.host + req.url });
+    res.end();
+  }).listen(80);
+}

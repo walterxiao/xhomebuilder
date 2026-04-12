@@ -52,7 +52,7 @@ for (const [mod, game, types] of GAME_START_MSGS) {
   });
 }
 
-const PORT = process.env.PORT || (tlsOpts ? 443 : 9753);
+const PORT = process.env.PORT || (tlsOpts ? 443 : 80);
 
 const PAGES = {
   '/':           'index.html',

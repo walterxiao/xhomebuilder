@@ -51,6 +51,8 @@ h1{font-size:1.9rem;letter-spacing:4px;color:#d4af37;text-shadow:0 0 20px rgba(2
 .opp-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:130px}
 .opp-name{font-size:.82rem;letter-spacing:1px;color:#d4af37;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .opp-name.active-turn{color:#a0e0a0}
+.opp-box.done{opacity:.5;border-color:#1a1a3a}
+.done-badge{font-size:.68rem;color:#555577;letter-spacing:.5px;font-style:italic}
 .mini-cards{display:flex;position:relative;height:42px;min-width:40px;justify-content:center}
 .mini-card{width:26px;height:38px;background:repeating-linear-gradient(135deg,#1a4a9a 0,#1a4a9a 3px,#0a2a6a 3px,#0a2a6a 6px);border-radius:3px;border:1px solid #0a2060;box-shadow:1px 1px 3px rgba(0,0,0,.4);position:absolute}
 .opp-count{font-size:.72rem;color:#9090b0;letter-spacing:.5px}
@@ -321,7 +323,7 @@ function renderOpponents() {
   players.forEach(p => {
     if (p.idx === myIdx) return;
     const box = document.createElement('div');
-    box.className = 'opp-box';
+    box.className = 'opp-box' + (p.done ? ' done' : '');
     box.id = 'opp-' + p.idx;
 
     const nameEl = document.createElement('div');
@@ -345,7 +347,7 @@ function renderOpponents() {
 
     const cnt = document.createElement('div');
     cnt.className = 'opp-count';
-    cnt.textContent = p.cardCount + ' card' + (p.cardCount !== 1 ? 's' : '');
+    cnt.textContent = p.done ? 'no cards' : p.cardCount + ' card' + (p.cardCount !== 1 ? 's' : '');
     box.appendChild(cnt);
 
     if (p.books.length > 0) {
@@ -361,16 +363,31 @@ function renderOpponents() {
       box.appendChild(brow);
     }
 
+    if (p.done) {
+      const db = document.createElement('div');
+      db.className = 'done-badge';
+      db.textContent = '● observer';
+      box.appendChild(db);
+    }
+
     el.appendChild(box);
   });
 }
 
 function renderAskPanel() {
-  const isMyTurn = currentTurn === myIdx;
-  document.getElementById('turn-label').textContent = isMyTurn
-    ? 'Your turn! Choose a rank and player:'
-    : 'Waiting for ' + (players.find(p => p.idx === currentTurn)?.name || '…') + '…';
-  document.getElementById('turn-label').className = isMyTurn ? '' : 'waiting';
+  const me = players.find(p => p.idx === myIdx);
+  const amDone = me && me.done;
+  const isMyTurn = currentTurn === myIdx && !amDone;
+
+  if (amDone) {
+    document.getElementById('turn-label').textContent = 'You are watching as an observer';
+    document.getElementById('turn-label').className = 'waiting';
+  } else {
+    document.getElementById('turn-label').textContent = isMyTurn
+      ? 'Your turn! Choose a rank and player:'
+      : 'Waiting for ' + (players.find(p => p.idx === currentTurn)?.name || '…') + '…';
+    document.getElementById('turn-label').className = isMyTurn ? '' : 'waiting';
+  }
 
   // Rank buttons — only ranks present in hand
   const ranks = [...new Set(myHand.map(c => c.r))];
@@ -387,10 +404,10 @@ function renderAskPanel() {
     rbEl.appendChild(btn);
   });
 
-  // Target buttons — only opponents
+  // Target buttons — active opponents only (exclude done players)
   const tbEl = document.getElementById('target-btns');
   tbEl.innerHTML = '';
-  players.filter(p => p.idx !== myIdx).forEach(p => {
+  players.filter(p => p.idx !== myIdx && !p.done).forEach(p => {
     const btn = document.createElement('button');
     btn.className = 'target-btn' + (p.idx === selectedTarget ? ' selected' : '');
     btn.textContent = p.name;
@@ -566,6 +583,19 @@ function handle(msg) {
       renderMyBooks();
       renderAskPanel();
       break;
+
+    case 'player_done': {
+      const p = players.find(q => q.idx === msg.playerIdx);
+      if (p) p.done = true;
+      if (msg.playerIdx === myIdx) {
+        addEvent('You have no more cards — watching as an observer.', 'ev-fish');
+      } else {
+        addEvent(`${msg.name} has no more cards and is now an observer.`, 'ev-fish');
+      }
+      renderOpponents();
+      renderAskPanel();
+      break;
+    }
 
     case 'asked': {
       const asker = msg.askerName;

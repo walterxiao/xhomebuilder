@@ -27,7 +27,7 @@ function bcast(session, obj) {
 
 function pub(session) {
   return session.players.map(p => ({
-    idx: p.idx, name: p.name, cardCount: p.hand.length, books: [...p.books]
+    idx: p.idx, name: p.name, cardCount: p.hand.length, books: [...p.books], done: !!p.done
   }));
 }
 
@@ -99,6 +99,7 @@ function handleStart(ws) {
   session.players.forEach(p => {
     p.hand = session.deck.splice(0, deal);
     p.books = [];
+    p.done = false;
     extractBooks(p);
   });
 
@@ -165,14 +166,24 @@ function advanceTurn(session, askerIdx, anotherTurn) {
     return;
   }
 
+  // Mark newly-done players (no cards, deck empty)
+  session.players.forEach(p => {
+    if (!p.done && p.hand.length === 0 && session.deck.length === 0) {
+      p.done = true;
+      bcast(session, { type: 'player_done', playerIdx: p.idx, name: p.name });
+    }
+  });
+  // End if fewer than 2 active players remain
+  const active = session.players.filter(p => !p.done);
+  if (active.length < 2) { endGame(session); return; }
+
   let next;
-  if (anotherTurn) {
+  if (anotherTurn && !session.players[askerIdx].done) {
     next = askerIdx;
   } else {
     next = (askerIdx + 1) % session.players.length;
     let tries = 0;
-    while (session.players[next].hand.length === 0 && session.deck.length === 0
-           && tries < session.players.length) {
+    while (session.players[next].done && tries < session.players.length) {
       next = (next + 1) % session.players.length;
       tries++;
     }

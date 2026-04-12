@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="/favicon.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sudoku</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1520;font-family:Georgia,serif;color:#e0d5c1;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 8px}
+h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;margin-bottom:14px}
+.screen{display:none;flex-direction:column;align-items:center;width:100%}
+.screen.active{display:flex}
+
+/* ── Name overlay ── */
+#name-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:flex;align-items:center;justify-content:center}
+.nov-card{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:40px 36px;text-align:center;width:320px}
+.nov-title{font-size:1.1rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase;margin-bottom:6px}
+.nov-sub{font-size:.78rem;color:#555577;letter-spacing:2px;margin-bottom:20px}
+#name-overlay input{width:100%;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:8px 12px;font-size:.95rem;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:10px}
+#name-overlay input:focus{border-color:#d4af37}
+#name-overlay button{width:100%;background:#16213e;border:1px solid #2a2a5a;border-radius:4px;color:#d4af37;padding:10px;font-size:.9rem;font-family:inherit;cursor:pointer;letter-spacing:1px}
+#name-overlay button:hover{border-color:#d4af37;background:#1e2e54}
+
+/* ── Lobby ── */
+#lobby-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:28px 36px;width:340px;max-width:92vw}
+#lobby-box label{display:block;font-size:.73rem;letter-spacing:2px;color:#9090b0;margin-bottom:5px;text-transform:uppercase}
+#lobby-box input{width:100%;padding:10px 13px;background:#0f0f24;border:1px solid #3a3a6a;border-radius:4px;color:#e0d5c1;font-size:1rem;font-family:inherit;outline:none;margin-bottom:13px}
+#lobby-box input:focus{border-color:#d4af37}
+.diff-ctrl{display:flex;gap:6px;margin-bottom:14px}
+.diff-btn{flex:1;padding:8px 0;background:#0f0f24;border:1px solid #3a3a6a;border-radius:4px;color:#9090b0;font-family:inherit;font-size:.8rem;cursor:pointer;letter-spacing:1px;text-transform:uppercase}
+.diff-btn.active{background:#1a2a4a;border-color:#d4af37;color:#d4af37}
+.btn-gold{width:100%;padding:11px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.92rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer}
+.btn-gold:hover{background:#f0c040}
+.btn-ghost{width:100%;padding:10px 0;background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:4px;font-size:.88rem;font-family:inherit;cursor:pointer;margin-top:8px}
+.btn-ghost:hover{color:#e0d5c1;border-color:#9090b0}
+#lobby-err{min-height:16px;font-size:.8rem;color:#e05555;text-align:center;margin-top:6px}
+.back-link{font-size:.73rem;color:#444466;letter-spacing:2px;text-decoration:none;text-transform:uppercase;margin-top:16px}
+.back-link:hover{color:#9090b0}
+.std-sess-section{margin-top:14px}
+.std-sess-hdr{font-size:.7rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#1a1a3a;color:#9090b0;border-radius:10px;padding:1px 7px;font-size:.66rem}
+.std-sess-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:8px 12px}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.83rem;color:#e0d5c1}
+.std-sess-meta{font-size:.7rem;color:#555577;margin-top:2px}
+.std-no-sess{padding:10px;text-align:center;font-size:.78rem;color:#444466;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px}
+.std-btn-join{padding:5px 12px;background:#2a4a1a;border:1px solid #4a8a3a;border-radius:4px;color:#a0d080;font-size:.75rem;cursor:pointer;font-family:inherit}
+
+/* ── Waiting ── */
+#waiting-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:28px 36px;width:340px;max-width:92vw;text-align:center}
+#session-id-display{font-size:2rem;letter-spacing:6px;color:#d4af37;cursor:pointer;margin:10px 0 4px;user-select:all}
+.copy-hint{font-size:.7rem;color:#555577;margin-bottom:14px}
+#waiting-players{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.waiting-player{background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:8px 14px;font-size:.88rem;display:flex;align-items:center;gap:8px}
+.crown{color:#d4af37;font-size:.75rem}
+
+/* ── Game ── */
+#screen-game{gap:8px;padding-bottom:16px}
+#player-row{display:flex;align-items:center;gap:8px;width:min(414px,calc(100vw - 16px))}
+.player-badge{padding:5px 10px;border-radius:5px;font-size:.78rem;letter-spacing:.5px;flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player-badge.p0{background:#0e1830;border:1px solid #304090;color:#6090ff}
+.player-badge.p0.you{border-width:2px;border-color:#5070d0}
+.player-badge.p1{background:#201208;border:1px solid #905020;color:#ff9040}
+.player-badge.p1.you{border-width:2px;border-color:#d07030}
+.player-badge.empty{background:#0f0f22;border:1px solid #2a2a5a;color:#444466;font-style:italic}
+#timer{font-size:1rem;letter-spacing:2px;color:#d4af37;font-family:Arial,sans-serif;min-width:52px;text-align:center;flex-shrink:0}
+#diff-badge{font-size:.66rem;letter-spacing:2px;color:#555577;text-transform:uppercase;text-align:center}
+
+/* ── Sudoku grid ── */
+#sudoku-wrap{width:min(414px,calc(100vw - 16px));display:flex;justify-content:center}
+#sudoku-grid{
+  display:grid;
+  grid-template-columns:repeat(9,1fr);
+  width:100%;
+  border-top:2px solid #7a8aaa;
+  border-left:2px solid #7a8aaa;
+}
+.cell{
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(13px,3.8vw,22px);
+  font-weight:bold;font-family:Arial,sans-serif;
+  cursor:pointer;
+  background:#0d1828;
+  color:#e0d5c1;
+  border-right:1px solid #253545;
+  border-bottom:1px solid #253545;
+  transition:background .08s;
+  -webkit-tap-highlight-color:transparent;
+  position:relative;
+}
+.cell[data-c="2"],.cell[data-c="5"],.cell[data-c="8"]{border-right:2px solid #7a8aaa}
+.cell[data-r="2"],.cell[data-r="5"],.cell[data-r="8"]{border-bottom:2px solid #7a8aaa}
+.cell.given{background:#131f30;color:#9aaabb;cursor:default}
+.cell.related{background:#111e2e}
+.cell.same-num{background:#1a2c1a}
+.cell.selected{background:#1a3050;outline:2px solid #d4af37;outline-offset:-2px;z-index:1}
+.cell.p0{color:#5880ff}
+.cell.p1{color:#ff8030}
+.cell.wrong{color:#ff3535 !important}
+.cell.given.related{background:#131f30}
+
+/* ── Number pad ── */
+#numpad{display:flex;gap:5px;width:min(414px,calc(100vw - 16px))}
+.num-btn{
+  flex:1;aspect-ratio:1;
+  background:#16213e;border:1px solid #2a2a5a;border-radius:5px;
+  color:#e0d5c1;font-size:clamp(13px,3.5vw,20px);font-weight:bold;font-family:Arial,sans-serif;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .1s;-webkit-tap-highlight-color:transparent;
+}
+.num-btn:hover,.num-btn:active{background:#1e2e54;border-color:#d4af37}
+.num-btn.erase{font-size:clamp(10px,2.5vw,14px);color:#9090b0;letter-spacing:.3px}
+
+/* ── Chat ── */
+#chat-box{background:#16213e;border:1px solid #2a2a5a;border-radius:6px;width:min(414px,calc(100vw - 16px));max-height:110px;display:flex;flex-direction:column}
+#chat-msgs{flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#2a2a5a transparent}
+.chat-msg{font-size:.75rem;line-height:1.4;word-break:break-word}
+.chat-msg .cn{font-weight:bold;margin-right:3px}
+.chat-msg .cn.p0c{color:#5880ff}
+.chat-msg .cn.p1c{color:#ff8030}
+.chat-msg .ct{color:#b0a880}
+.chat-sys{font-size:.7rem;color:#444466;font-style:italic;text-align:center}
+#chat-row{display:flex;border-top:1px solid #2a2a5a}
+#chat-in{flex:1;background:transparent;border:none;outline:none;color:#e0d5c1;font-family:inherit;font-size:.75rem;padding:7px 10px}
+#chat-send{background:transparent;border:none;border-left:1px solid #2a2a5a;color:#555577;font-size:.7rem;padding:0 10px;cursor:pointer}
+#chat-send:hover{color:#d4af37}
+
+/* ── Game over overlay ── */
+#gameover-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;align-items:center;justify-content:center}
+#gameover-overlay.visible{display:flex}
+#gameover-box{background:#16213e;border:1px solid #2a2a5a;border-radius:10px;padding:32px 40px;text-align:center;max-width:320px;width:90vw}
+#gameover-box h2{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-bottom:8px}
+#gameover-box .sub{font-size:.9rem;color:#9090b0;margin-bottom:20px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<!-- Name overlay -->
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Sudoku</div>
+    <div class="nov-sub">Choose your name</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
+<h1>Sudoku</h1>
+
+<!-- LOBBY -->
+<div id="screen-lobby" class="screen active">
+  <div id="lobby-box">
+    <label for="name-in">Your Name</label>
+    <input id="name-in" type="text" placeholder="enter your name" maxlength="24" autocomplete="off">
+    <label>Difficulty</label>
+    <div class="diff-ctrl">
+      <button class="diff-btn active" data-diff="easy">Easy</button>
+      <button class="diff-btn active" data-diff="medium">Medium</button>
+      <button class="diff-btn" data-diff="hard">Hard</button>
+    </div>
+    <button class="btn-gold" id="host-btn">HOST GAME</button>
+    <div id="lobby-err"></div>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="sess-badge">0</span></div>
+      <div class="std-sess-list" id="sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+  </div>
+  <a href="/" class="back-link">&#8592; Back to Hub</a>
+</div>
+
+<!-- WAITING -->
+<div id="screen-waiting" class="screen">
+  <div id="waiting-box">
+    <div style="font-size:.73rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:6px">Session</div>
+    <div id="session-id-display">—</div>
+    <div class="copy-hint">Tap to copy · Share with a friend</div>
+    <div id="waiting-players"></div>
+    <button class="btn-gold" id="start-btn" style="display:none">START</button>
+    <div id="waiting-msg" style="font-size:.83rem;color:#9090b0;margin-top:10px">Waiting for host to start…</div>
+    <button class="btn-ghost" id="leave-btn">Leave</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div id="player-row">
+    <div class="player-badge empty" id="badge-p0">—</div>
+    <div id="timer">0:00</div>
+    <div class="player-badge empty" id="badge-p1">—</div>
+  </div>
+  <div id="diff-badge"></div>
+  <div id="sudoku-wrap"><div id="sudoku-grid"></div></div>
+  <div id="numpad"></div>
+  <div id="chat-box">
+    <div id="chat-msgs"></div>
+    <div id="chat-row">
+      <input id="chat-in" type="text" placeholder="Chat…" maxlength="200" autocomplete="off">
+      <button id="chat-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover-overlay">
+  <div id="gameover-box">
+    <h2>SOLVED! 🎉</h2>
+    <div class="sub" id="gameover-sub"></div>
+    <button class="btn-gold" id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ── State ──
+let ws = null, myIdx = null, myName = '', sessionId = null;
+let players = [], puzzle = null, entries = null;
+let selected = -1, gameStarted = false;
+let timerStart = null, timerInterval = null;
+let selectedDiff = 'medium';
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+// ── Difficulty buttons ──
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedDiff = btn.dataset.diff;
+  });
+});
+// Fix initial state: only medium active
+document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+document.querySelector('.diff-btn[data-diff="medium"]').classList.add('active');
+
+// ── Grid rendering ──
+function buildGrid() {
+  const grid = document.getElementById('sudoku-grid');
+  grid.innerHTML = '';
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      grid.appendChild(cell);
+      cell.addEventListener('click', () => onCellClick(r * 9 + c));
+    }
+  }
+}
+
+function renderGrid() {
+  if (!puzzle) return;
+  const sr = selected >= 0 ? Math.floor(selected / 9) : -1;
+  const sc = selected >= 0 ? selected % 9 : -1;
+  const sbr = sr >= 0 ? Math.floor(sr / 3) * 3 : -1;
+  const sbc = sc >= 0 ? Math.floor(sc / 3) * 3 : -1;
+  const sv = selected >= 0
+    ? (puzzle[sr][sc] || (entries[selected] ? entries[selected].value : 0))
+    : 0;
+
+  const cells = document.getElementById('sudoku-grid').children;
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const idx = r * 9 + c;
+      const cell = cells[idx];
+      const given = puzzle[r][c] !== 0;
+      const entry = entries[idx];
+
+      // Classes
+      let cls = 'cell';
+      if (given) {
+        cls += ' given';
+      } else if (entry) {
+        cls += ' p' + entry.playerIdx;
+        if (!entry.correct) cls += ' wrong';
+      }
+      if (idx === selected) {
+        cls += ' selected';
+      } else if (sr >= 0) {
+        const related = r === sr || c === sc
+          || (Math.floor(r / 3) * 3 === sbr && Math.floor(c / 3) * 3 === sbc);
+        if (related) cls += ' related';
+        const cellVal = given ? puzzle[r][c] : (entry ? entry.value : 0);
+        if (sv > 0 && cellVal === sv) cls += ' same-num';
+      }
+      cell.className = cls;
+
+      // Text
+      if (given) {
+        cell.textContent = puzzle[r][c];
+      } else if (entry) {
+        cell.textContent = entry.value;
+      } else {
+        cell.textContent = '';
+      }
+    }
+  }
+}
+
+// ── Input ──
+function onCellClick(idx) {
+  if (!puzzle) return;
+  const r = Math.floor(idx / 9), c = idx % 9;
+  if (puzzle[r][c] !== 0) { selected = -1; renderGrid(); return; }
+  selected = (selected === idx) ? -1 : idx;
+  renderGrid();
+}
+
+function placeNumber(n) {
+  if (selected < 0 || !puzzle || !gameStarted) return;
+  const r = Math.floor(selected / 9), c = selected % 9;
+  if (puzzle[r][c] !== 0) return;
+  wsSend({ type: 'move', row: r, col: c, value: n });
+}
+
+document.addEventListener('keydown', e => {
+  if (!gameStarted) return;
+  if (document.activeElement === document.getElementById('chat-in')) return;
+  if (e.key >= '1' && e.key <= '9') { placeNumber(+e.key); return; }
+  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { placeNumber(0); return; }
+  if (e.key === 'Escape') { selected = -1; renderGrid(); return; }
+  // Arrow key navigation
+  if (selected >= 0 && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+    e.preventDefault();
+    const r = Math.floor(selected / 9), c = selected % 9;
+    let nr = r, nc = c;
+    if (e.key === 'ArrowUp')    nr = (r + 8) % 9;
+    if (e.key === 'ArrowDown')  nr = (r + 1) % 9;
+    if (e.key === 'ArrowLeft')  nc = (c + 8) % 9;
+    if (e.key === 'ArrowRight') nc = (c + 1) % 9;
+    selected = nr * 9 + nc;
+    renderGrid();
+  }
+});
+
+// ── Numpad ──
+function buildNumpad() {
+  const el = document.getElementById('numpad');
+  el.innerHTML = '';
+  for (let n = 1; n <= 9; n++) {
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = n;
+    btn.addEventListener('click', () => placeNumber(n));
+    el.appendChild(btn);
+  }
+  const erase = document.createElement('button');
+  erase.className = 'num-btn erase';
+  erase.textContent = 'Erase';
+  erase.addEventListener('click', () => placeNumber(0));
+  el.appendChild(erase);
+}
+
+// ── Timer ──
+function startTimer() {
+  timerStart = Date.now();
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - timerStart) / 1000);
+    const m = Math.floor(s / 60);
+    document.getElementById('timer').textContent = m + ':' + String(s % 60).padStart(2, '0');
+  }, 1000);
+}
+
+// ── Player badges ──
+function renderBadges() {
+  ['p0', 'p1'].forEach((cls, i) => {
+    const el = document.getElementById('badge-' + cls);
+    const p = players.find(p => p.idx === i);
+    if (p) {
+      el.className = 'player-badge ' + cls + (p.idx === myIdx ? ' you' : '');
+      el.textContent = p.name + (p.idx === myIdx ? ' (you)' : '');
+    } else {
+      el.className = 'player-badge empty';
+      el.textContent = i === 0 ? 'Player 1' : 'Waiting…';
+    }
+  });
+}
+
+// ── Event log / chat ──
+function addChat(name, text, pIdx) {
+  const cm = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  if (name === '·') {
+    div.className = 'chat-sys'; div.textContent = text;
+  } else {
+    div.className = 'chat-msg';
+    const cn = document.createElement('span');
+    cn.className = 'cn' + (pIdx === 0 ? ' p0c' : pIdx === 1 ? ' p1c' : '');
+    cn.textContent = name + ':';
+    const ct = document.createElement('span');
+    ct.className = 'ct'; ct.textContent = ' ' + text;
+    div.appendChild(cn); div.appendChild(ct);
+  }
+  cm.appendChild(div);
+  while (cm.children.length > 60) cm.removeChild(cm.firstChild);
+  cm.scrollTop = cm.scrollHeight;
+}
+
+// ── WebSocket ──
+function openWs(onOpen) {
+  if (ws) { ws.onclose = null; ws.close(); }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/sudoku`);
+  ws.onopen = onOpen;
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => { if (gameStarted) addChat('·', 'Connection lost.', -1); };
+}
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ── Message handler ──
+function handle(msg) {
+  switch (msg.type) {
+    case 'joined':
+      sessionId = msg.sessionId;
+      myIdx = msg.yourIdx;
+      players = msg.players;
+      document.getElementById('session-id-display').textContent = sessionId;
+      renderWaiting();
+      if (myIdx === 0) {
+        document.getElementById('start-btn').style.display = '';
+        document.getElementById('waiting-msg').textContent = 'Invite a friend or start solo!';
+      }
+      showScreen('waiting');
+      break;
+
+    case 'lobby_update':
+      players = msg.players;
+      renderWaiting();
+      break;
+
+    case 'start':
+      gameStarted = true;
+      puzzle = msg.puzzle;
+      entries = new Array(81).fill(null);
+      players = msg.players;
+      selected = -1;
+      document.getElementById('diff-badge').textContent = msg.difficulty;
+      document.getElementById('chat-msgs').innerHTML = '';
+      renderBadges();
+      renderGrid();
+      startTimer();
+      showScreen('game');
+      break;
+
+    case 'move': {
+      const idx = msg.row * 9 + msg.col;
+      if (msg.value === 0) {
+        entries[idx] = null;
+      } else {
+        entries[idx] = { value: msg.value, playerIdx: msg.playerIdx, correct: msg.correct };
+      }
+      renderGrid();
+      break;
+    }
+
+    case 'complete':
+      clearInterval(timerInterval);
+      const mins = Math.floor(msg.elapsed / 60);
+      const secs = msg.elapsed % 60;
+      document.getElementById('gameover-sub').innerHTML =
+        `Solved in ${mins > 0 ? mins + 'm ' : ''}${secs}s<br>Great teamwork!`;
+      document.getElementById('gameover-overlay').classList.add('visible');
+      break;
+
+    case 'chat':
+      addChat(msg.name, msg.text, msg.playerIdx);
+      break;
+
+    case 'error':
+      document.getElementById('lobby-err').textContent = msg.message;
+      showScreen('lobby');
+      break;
+  }
+}
+
+// ── Waiting room ──
+function renderWaiting() {
+  const el = document.getElementById('waiting-players');
+  el.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'waiting-player';
+    if (p.idx === 0) { const cr = document.createElement('span'); cr.className = 'crown'; cr.textContent = '★'; div.appendChild(cr); }
+    const name = document.createElement('span');
+    name.textContent = p.name + (p.idx === myIdx ? ' (you)' : '');
+    div.appendChild(name);
+    el.appendChild(div);
+  });
+}
+
+// ── Session list ──
+let sessPollTimer = null;
+function startSessPoll() { fetchSessions(); sessPollTimer = setInterval(fetchSessions, 5000); }
+function stopSessPoll() { clearInterval(sessPollTimer); sessPollTimer = null; }
+function fetchSessions() {
+  fetch('/api/sudoku/sessions').then(r => r.json()).then(list => {
+    const badge = document.getElementById('sess-badge');
+    const container = document.getElementById('sess-list');
+    badge.textContent = list.length;
+    if (!list.length) { container.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+    container.innerHTML = list.map(s => `
+      <div class="std-sess-row">
+        <div class="std-sess-info">
+          <div class="std-sess-host">${esc(s.hostName)}'s game</div>
+          <div class="std-sess-meta">${s.label} · ${s.status}</div>
+        </div>
+        ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">Join</button>` : ''}
+      </div>`).join('');
+  }).catch(() => {});
+}
+
+function joinSession(id) {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll(); myName = name;
+  openWs(() => wsSend({ type: 'join', name, sessionId: id }));
+}
+
+// ── Lobby ──
+document.getElementById('host-btn').addEventListener('click', () => {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll(); myName = name;
+  openWs(() => wsSend({ type: 'join', name }));
+});
+document.getElementById('name-in').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('host-btn').click();
+});
+
+// ── Waiting ──
+document.getElementById('start-btn').addEventListener('click', () => {
+  wsSend({ type: 'start', difficulty: selectedDiff });
+});
+document.getElementById('leave-btn').addEventListener('click', () => {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  gameStarted = false; showScreen('lobby'); startSessPoll();
+});
+document.getElementById('session-id-display').addEventListener('click', () => {
+  if (!sessionId) return;
+  navigator.clipboard?.writeText(String(sessionId)).then(() => {
+    const d = document.getElementById('session-id-display');
+    const old = d.textContent; d.textContent = 'Copied!';
+    setTimeout(() => d.textContent = old, 1200);
+  });
+});
+
+// ── Chat ──
+document.getElementById('chat-send').addEventListener('click', sendChat);
+document.getElementById('chat-in').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+function sendChat() {
+  const text = document.getElementById('chat-in').value.trim();
+  if (!text) return;
+  wsSend({ type: 'chat', text });
+  document.getElementById('chat-in').value = '';
+}
+
+// ── Play again ──
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  document.getElementById('gameover-overlay').classList.remove('visible');
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  puzzle = null; entries = null; players = []; selected = -1; gameStarted = false;
+  clearInterval(timerInterval); document.getElementById('timer').textContent = '0:00';
+  document.getElementById('name-in').value = myName;
+  showScreen('lobby'); startSessPoll();
+});
+
+// ── Init ──
+buildGrid();
+buildNumpad();
+startSessPoll();
+
+// ── Name overlay ──
+window.onNameSet = name => { document.getElementById('name-in').value = name; };
+(function() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  function connectPresence(name) {
+    const pw = new WebSocket(`${proto}://${location.host}/ws/presence`);
+    pw.onopen = () => pw.send(JSON.stringify({ type: 'presence_join', name, page: 'sudoku' }));
+  }
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+    if (typeof window.onNameSet === 'function') window.onNameSet(val);
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    window.onNameSet(saved);
+    connectPresence(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+</script>
+</body>
+</html>

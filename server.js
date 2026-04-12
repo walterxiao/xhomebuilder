@@ -25,6 +25,7 @@ const gofish     = require('./games/gofish');
 const snake      = require('./games/snake');
 const tank       = require('./games/tank');
 const go         = require('./games/go');
+const sudoku     = require('./games/sudoku');
 const stats      = require('./stats');
 
 // ── Play-count tracking ───────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ const GAME_START_MSGS = [
   [gofish,     'gofish',     ['start']],   // no explicit create msg
   [tank,       'tank',       ['tank_create']],
   [go,         'go',         ['go_create']],
+  [sudoku,     'sudoku',     ['start']],
 ];
 for (const [mod, game, types] of GAME_START_MSGS) {
   mod.wss.on('connection', ws => {
@@ -68,6 +70,7 @@ const PAGES = {
   '/gofish':     'gofish.html',
   '/tank':       'tank.html',
   '/go':         'go.html',
+  '/sudoku':     'sudoku.html',
 };
 
 
@@ -87,6 +90,7 @@ function requestHandler(req, res) {
     '/api/snake/sessions':      () => snake.getSessionList(),
     '/api/tank/sessions':       () => tank.getSessionList(),
     '/api/go/sessions':         () => go.getSessionList(),
+    '/api/sudoku/sessions':     () => sudoku.getSessionList(),
   };
   if (urlPath === '/api/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -171,6 +175,10 @@ httpsServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/go') {
     go.wss.handleUpgrade(req, socket, head, ws => {
       go.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/sudoku') {
+    sudoku.wss.handleUpgrade(req, socket, head, ws => {
+      sudoku.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

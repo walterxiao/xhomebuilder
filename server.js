@@ -99,6 +99,14 @@ function requestHandler(req, res) {
     return;
   }
   const file = PAGES[urlPath];
+  if (urlPath === '/favicon.svg') {
+    fs.readFile(path.join(__dirname, 'favicon.svg'), (err, data) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public,max-age=86400' });
+      res.end(data);
+    });
+    return;
+  }
   if (!file) { res.writeHead(404); res.end('Not found'); return; }
   fs.readFile(path.join(__dirname, file), (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }

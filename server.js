@@ -1,6 +1,11 @@
-const http = require('http');
-const fs = require('fs');
+const http  = require('http');
+const https = require('https');
+const fs   = require('fs');
 const path = require('path');
+
+const SSL_KEY  = process.env.SSL_KEY  || '/etc/letsencrypt/live/default/privkey.pem';
+const SSL_CERT = process.env.SSL_CERT || '/etc/letsencrypt/live/default/fullchain.pem';
+const tlsOpts  = { key: fs.readFileSync(SSL_KEY), cert: fs.readFileSync(SSL_CERT) };
 
 const connect5   = require('./games/connect5');
 const airplane   = require('./games/airplane');
@@ -42,7 +47,7 @@ for (const [mod, game, types] of GAME_START_MSGS) {
   });
 }
 
-const PORT = process.env.PORT || 9753;
+const PORT = process.env.PORT || 443;
 
 const PAGES = {
   '/':           'index.html',
@@ -62,7 +67,7 @@ const PAGES = {
 
 
 
-const httpServer = http.createServer((req, res) => {
+const httpsServer = https.createServer(tlsOpts, (req, res) => {
   const urlPath = req.url.split('?')[0];
   const SESSION_APIS = {
     '/api/connect5/sessions':   () => connect5.getSessionList(),
@@ -97,7 +102,7 @@ const httpServer = http.createServer((req, res) => {
   });
 });
 
-httpServer.on('upgrade', (req, socket, head) => {
+httpsServer.on('upgrade', (req, socket, head) => {
   if (req.url === '/ws/connect5') {
     connect5.wss.handleUpgrade(req, socket, head, ws => {
       connect5.wss.emit('connection', ws, req);
@@ -155,6 +160,11 @@ httpServer.on('upgrade', (req, socket, head) => {
   }
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Game Hub running → http://localhost:${PORT}`);
+httpsServer.listen(PORT, () => {
+  console.log(`Game Hub running → https://localhost:${PORT}`);
 });
+
+http.createServer((req, res) => {
+  res.writeHead(301, { Location: 'https://' + req.headers.host + req.url });
+  res.end();
+}).listen(80);

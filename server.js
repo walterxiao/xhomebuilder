@@ -1,7 +1,8 @@
 const http  = require('http');
 const https = require('https');
-const fs   = require('fs');
-const path = require('path');
+const fs    = require('fs');
+const path  = require('path');
+const logger = require('./logger');
 
 let tlsOpts = null;
 try {
@@ -54,6 +55,36 @@ for (const [mod, game, types] of GAME_START_MSGS) {
   });
 }
 
+// ── Join / create tracking ────────────────────────────────────────────────────
+// Sniff the first 'join' message on every game WebSocket to distinguish
+// new-session creation (no sessionId) from joining an existing one.
+const GAME_JOIN_TRACK = [
+  [connect5,   'connect5'],
+  [airplane,   'airplane'],
+  [battleship, 'battleship'],
+  [pictionary, 'pictionary'],
+  [chess,      'chess'],
+  [pingpong,   'pingpong'],
+  [blockstack, 'blockstack'],
+  [raiden,     'raiden'],
+  [gofish,     'gofish'],
+  [snake,      'snake'],
+  [tank,       'tank'],
+  [sudoku,     'sudoku'],
+];
+for (const [mod, game] of GAME_JOIN_TRACK) {
+  mod.wss.on('connection', ws => {
+    ws.on('message', raw => {
+      try {
+        const m = JSON.parse(raw);
+        if (m.type === 'join') {
+          logger.log(m.sessionId ? 'game_join' : 'game_create', { game });
+        }
+      } catch {}
+    });
+  });
+}
+
 const PORT = process.env.PORT || (tlsOpts ? 443 : 80);
 
 const PAGES = {
@@ -99,6 +130,7 @@ function requestHandler(req, res) {
   }
   if (urlPath === '/api/hideandseek/click') {
     stats.increment('hideandseek');
+    logger.log('game_create', { game: 'hideandseek' });
     res.writeHead(204);
     res.end();
     return;
@@ -118,6 +150,9 @@ function requestHandler(req, res) {
     return;
   }
   if (!file) { res.writeHead(404); res.end('Not found'); return; }
+  const game = urlPath === '/' ? 'lobby' : urlPath.slice(1);
+  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  logger.log('page_view', { game, ip });
   fs.readFile(path.join(__dirname, file), (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

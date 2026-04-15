@@ -114,6 +114,31 @@ h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;ma
 .num-btn:hover,.num-btn:active{background:#1e2e54;border-color:#d4af37}
 .num-btn.erase{font-size:clamp(10px,2.5vw,14px);color:#9090b0;letter-spacing:.3px}
 
+/* ── Note toggle ── */
+#note-btn{
+  width:min(414px,calc(100vw - 16px));
+  padding:7px 0;
+  background:#16213e;border:1px solid #2a2a5a;border-radius:5px;
+  color:#9090b0;font-family:inherit;font-size:.8rem;
+  cursor:pointer;letter-spacing:1px;transition:background .1s,border-color .1s,color .1s;
+  -webkit-tap-highlight-color:transparent;
+}
+#note-btn.active{background:#162030;border-color:#5080c0;color:#80b0e8}
+#note-btn.active::before{content:"✏ ";font-size:.75rem}
+#note-btn:not(.active)::before{content:"✏ ";font-size:.75rem;opacity:.45}
+
+/* ── Cell notes mini-grid ── */
+.cell-notes{
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
+  width:100%;height:100%;padding:1px;
+}
+.note-num{
+  font-size:clamp(4px,1.15vw,8px);
+  color:#6888aa;display:flex;align-items:center;justify-content:center;
+  font-weight:normal;font-family:Arial,sans-serif;line-height:1;
+}
+.cell.selected .note-num{color:#90b8e0}
+
 /* ── Chat ── */
 #chat-box{background:#16213e;border:1px solid #2a2a5a;border-radius:6px;width:min(414px,calc(100vw - 16px));max-height:110px;display:flex;flex-direction:column}
 #chat-msgs{flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:3px;scrollbar-width:thin;scrollbar-color:#2a2a5a transparent}
@@ -194,6 +219,7 @@ h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;ma
   <div id="diff-badge"></div>
   <div id="sudoku-wrap"><div id="sudoku-grid"></div></div>
   <div id="numpad"></div>
+  <button id="note-btn">Note</button>
   <div id="chat-box">
     <div id="chat-msgs"></div>
     <div id="chat-row">
@@ -216,8 +242,8 @@ h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;ma
 'use strict';
 // ── State ──
 let ws = null, myIdx = null, myName = '', sessionId = null;
-let players = [], puzzle = null, entries = null;
-let selected = -1, gameStarted = false;
+let players = [], puzzle = null, entries = null, notes = null;
+let selected = -1, gameStarted = false, noteMode = false;
 let timerStart = null, timerInterval = null;
 let selectedDiff = 'medium';
 
@@ -291,13 +317,22 @@ function renderGrid() {
       }
       cell.className = cls;
 
-      // Text
+      // Content
+      cell.innerHTML = '';
       if (given) {
         cell.textContent = puzzle[r][c];
       } else if (entry) {
         cell.textContent = entry.value;
-      } else {
-        cell.textContent = '';
+      } else if (notes && notes[idx] && notes[idx].size > 0) {
+        const ng = document.createElement('div');
+        ng.className = 'cell-notes';
+        for (let n = 1; n <= 9; n++) {
+          const s = document.createElement('span');
+          s.className = 'note-num';
+          s.textContent = notes[idx].has(n) ? n : '';
+          ng.appendChild(s);
+        }
+        cell.appendChild(ng);
       }
     }
   }
@@ -316,12 +351,23 @@ function placeNumber(n) {
   if (selected < 0 || !puzzle || !gameStarted) return;
   const r = Math.floor(selected / 9), c = selected % 9;
   if (puzzle[r][c] !== 0) return;
+  if (noteMode) {
+    if (n === 0) {
+      notes[selected] = new Set();
+    } else {
+      if (notes[selected].has(n)) notes[selected].delete(n);
+      else notes[selected].add(n);
+    }
+    renderGrid();
+    return;
+  }
   wsSend({ type: 'move', row: r, col: c, value: n });
 }
 
 document.addEventListener('keydown', e => {
   if (!gameStarted) return;
   if (document.activeElement === document.getElementById('chat-in')) return;
+  if (e.key.toLowerCase() === 'n') { toggleNoteMode(); return; }
   if (e.key >= '1' && e.key <= '9') { placeNumber(+e.key); return; }
   if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { placeNumber(0); return; }
   if (e.key === 'Escape') { selected = -1; renderGrid(); return; }
@@ -338,6 +384,12 @@ document.addEventListener('keydown', e => {
     renderGrid();
   }
 });
+
+// ── Note mode ──
+function toggleNoteMode() {
+  noteMode = !noteMode;
+  document.getElementById('note-btn').classList.toggle('active', noteMode);
+}
 
 // ── Numpad ──
 function buildNumpad() {
@@ -441,6 +493,9 @@ function handle(msg) {
       gameStarted = true;
       puzzle = msg.puzzle;
       entries = new Array(81).fill(null);
+      notes = Array.from({ length: 81 }, () => new Set());
+      noteMode = false;
+      document.getElementById('note-btn').classList.remove('active');
       players = msg.players;
       selected = -1;
       document.getElementById('diff-badge').textContent = msg.difficulty;
@@ -457,6 +512,7 @@ function handle(msg) {
         entries[idx] = null;
       } else {
         entries[idx] = { value: msg.value, playerIdx: msg.playerIdx, correct: msg.correct };
+        if (notes) notes[idx] = new Set();
       }
       renderGrid();
       break;
@@ -578,6 +634,7 @@ document.getElementById('play-again-btn').addEventListener('click', () => {
 // ── Init ──
 buildGrid();
 buildNumpad();
+document.getElementById('note-btn').addEventListener('click', toggleNoteMode);
 startSessPoll();
 
 // ── Name overlay ──

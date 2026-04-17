@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="/favicon.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Maze Runner</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1520;font-family:Georgia,serif;color:#e0d5c1;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px 8px}
+h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;margin-bottom:14px}
+.screen{display:none;flex-direction:column;align-items:center;width:100%}
+.screen.active{display:flex}
+
+/* ── Name overlay ── */
+#name-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:flex;align-items:center;justify-content:center}
+.nov-card{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:40px 36px;text-align:center;width:320px}
+.nov-title{font-size:1.1rem;letter-spacing:4px;color:#d4af37;text-transform:uppercase;margin-bottom:6px}
+.nov-sub{font-size:.78rem;color:#555577;letter-spacing:2px;margin-bottom:20px}
+#name-overlay input{width:100%;background:#0f0f22;border:1px solid #2a2a5a;border-radius:4px;color:#e0d5c1;padding:8px 12px;font-size:.95rem;font-family:inherit;outline:none;margin-bottom:10px}
+#name-overlay input:focus{border-color:#d4af37}
+#name-overlay button{width:100%;background:#16213e;border:1px solid #2a2a5a;border-radius:4px;color:#d4af37;padding:10px;font-size:.9rem;font-family:inherit;cursor:pointer;letter-spacing:1px}
+#name-overlay button:hover{border-color:#d4af37;background:#1e2e54}
+
+/* ── Lobby ── */
+#lobby-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:28px 36px;width:340px;max-width:92vw}
+#lobby-box label{display:block;font-size:.73rem;letter-spacing:2px;color:#9090b0;margin-bottom:5px;text-transform:uppercase}
+#lobby-box input{width:100%;padding:10px 13px;background:#0f0f24;border:1px solid #3a3a6a;border-radius:4px;color:#e0d5c1;font-size:1rem;font-family:inherit;outline:none;margin-bottom:13px}
+#lobby-box input:focus{border-color:#d4af37}
+.btn-gold{width:100%;padding:11px 0;background:#d4af37;color:#1a1a2e;border:none;border-radius:4px;font-size:.92rem;font-family:inherit;font-weight:bold;letter-spacing:2px;cursor:pointer}
+.btn-gold:hover{background:#f0c040}
+.btn-ghost{width:100%;padding:10px 0;background:transparent;color:#9090b0;border:1px solid #3a3a6a;border-radius:4px;font-size:.88rem;font-family:inherit;cursor:pointer;margin-top:8px}
+.btn-ghost:hover{color:#e0d5c1;border-color:#9090b0}
+#lobby-err{min-height:16px;font-size:.8rem;color:#e05555;text-align:center;margin-top:6px}
+.back-link{font-size:.73rem;color:#444466;letter-spacing:2px;text-decoration:none;text-transform:uppercase;margin-top:16px}
+.back-link:hover{color:#9090b0}
+.std-sess-section{margin-top:14px}
+.std-sess-hdr{font-size:.7rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+.std-sess-badge{background:#1a1a3a;color:#9090b0;border-radius:10px;padding:1px 7px;font-size:.66rem}
+.std-sess-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto}
+.std-sess-row{display:flex;align-items:center;gap:8px;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:8px 12px}
+.std-sess-info{flex:1}
+.std-sess-host{font-size:.83rem;color:#e0d5c1}
+.std-sess-meta{font-size:.7rem;color:#555577;margin-top:2px}
+.std-no-sess{padding:10px;text-align:center;font-size:.78rem;color:#444466;background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px}
+.std-btn-join{padding:5px 12px;background:#2a4a1a;border:1px solid #4a8a3a;border-radius:4px;color:#a0d080;font-size:.75rem;cursor:pointer;font-family:inherit}
+
+/* ── Waiting ── */
+#waiting-box{background:#16213e;border:1px solid #2a2a5a;border-radius:8px;padding:28px 36px;width:340px;max-width:92vw;text-align:center}
+#session-id-display{font-size:2rem;letter-spacing:6px;color:#d4af37;cursor:pointer;margin:10px 0 4px;user-select:all}
+.copy-hint{font-size:.7rem;color:#555577;margin-bottom:14px}
+#waiting-players{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.waiting-player{background:#0f0f24;border:1px solid #2a2a5a;border-radius:4px;padding:8px 14px;font-size:.88rem;display:flex;align-items:center;gap:8px}
+.crown{color:#d4af37;font-size:.75rem}
+
+/* ── Game ── */
+#screen-game{gap:8px;padding-bottom:16px}
+#player-row{display:flex;gap:5px;width:min(414px,calc(100vw - 16px));flex-wrap:wrap}
+.player-badge{padding:5px 8px;border-radius:5px;font-size:.72rem;flex:1;min-width:70px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player-badge.p0{background:#0e1830;border:1px solid #304090;color:#6090ff}
+.player-badge.p1{background:#201208;border:1px solid #905020;color:#ff8040}
+.player-badge.p2{background:#0a2010;border:1px solid #308030;color:#50cc50}
+.player-badge.p3{background:#200820;border:1px solid #904090;color:#cc50cc}
+.player-badge.you{border-width:2px}
+.player-badge.empty{background:#0f0f22;border:1px solid #2a2a5a;color:#444466;font-style:italic}
+.player-badge.done{opacity:.55}
+.rank-tag{margin-left:4px;font-size:.68rem}
+
+/* ── Canvas ── */
+#maze-canvas{border:2px solid #2a3a5a;border-radius:3px;display:block;touch-action:none}
+#hint{font-size:.68rem;color:#444466;letter-spacing:1px;text-align:center}
+
+/* ── D-pad ── */
+#dpad{display:grid;grid-template-areas:". up ." "left . right" ". down .";grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,54px);gap:4px;touch-action:none}
+.dp{width:54px;height:54px;background:#16213e;border:1px solid #2a2a5a;border-radius:6px;color:#c0c8e0;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none}
+.dp:active,.dp.held{background:#1e2e54;border-color:#d4af37;color:#d4af37}
+#dp-u{grid-area:up}#dp-d{grid-area:down}#dp-l{grid-area:left}#dp-r{grid-area:right}
+
+/* ── Finish toast ── */
+#toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#162a16;border:1px solid #3a8a3a;border-radius:6px;padding:7px 18px;font-size:.82rem;color:#80d080;z-index:200;display:none;white-space:nowrap}
+#toast.show{display:block}
+
+/* ── Game over ── */
+#gameover-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;align-items:center;justify-content:center}
+#gameover-overlay.visible{display:flex}
+#gameover-box{background:#16213e;border:1px solid #2a2a5a;border-radius:10px;padding:32px 40px;text-align:center;max-width:340px;width:90vw}
+#gameover-box h2{font-size:1.4rem;letter-spacing:3px;color:#d4af37;margin-bottom:16px}
+.rank-list{text-align:left;margin-bottom:20px;display:flex;flex-direction:column;gap:8px}
+.rank-item{display:flex;align-items:center;gap:10px;font-size:.88rem;padding:7px 10px;border-radius:4px;background:#0f0f24}
+.rank-medal{font-size:1.1rem;min-width:26px;text-align:center}
+.rank-name{flex:1;color:#e0d5c1}
+.rank-time{font-size:.75rem;color:#9090b0}
+</style>
+</head>
+<body>
+
+<div id="name-overlay">
+  <div class="nov-card">
+    <div class="nov-title">Maze Runner</div>
+    <div class="nov-sub">Choose your name</div>
+    <input id="nov-input" type="text" maxlength="24" placeholder="Your name" autocomplete="off">
+    <button id="nov-btn">Enter</button>
+  </div>
+</div>
+
+<h1>Maze Runner</h1>
+<div id="toast"></div>
+
+<!-- LOBBY -->
+<div id="screen-lobby" class="screen active">
+  <div id="lobby-box">
+    <label for="name-in">Your Name</label>
+    <input id="name-in" type="text" placeholder="enter your name" maxlength="24" autocomplete="off">
+    <button class="btn-gold" id="host-btn">HOST GAME</button>
+    <div id="lobby-err"></div>
+    <div class="std-sess-section">
+      <div class="std-sess-hdr">Active Games <span class="std-sess-badge" id="sess-badge">0</span></div>
+      <div class="std-sess-list" id="sess-list"><div class="std-no-sess">Loading…</div></div>
+    </div>
+  </div>
+  <a href="/" class="back-link">&#8592; Back to Hub</a>
+</div>
+
+<!-- WAITING -->
+<div id="screen-waiting" class="screen">
+  <div id="waiting-box">
+    <div style="font-size:.73rem;letter-spacing:2px;color:#555577;text-transform:uppercase;margin-bottom:6px">Session</div>
+    <div id="session-id-display">—</div>
+    <div class="copy-hint">Tap to copy · Share with friends</div>
+    <div id="waiting-players"></div>
+    <button class="btn-gold" id="start-btn" style="display:none">START</button>
+    <div id="waiting-msg" style="font-size:.83rem;color:#9090b0;margin-top:10px">Waiting for host to start…</div>
+    <button class="btn-ghost" id="leave-btn">Leave</button>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="screen-game" class="screen">
+  <div id="player-row"></div>
+  <canvas id="maze-canvas"></canvas>
+  <div id="hint">Arrow keys / WASD · Race to the ★ exit</div>
+  <div id="dpad">
+    <button class="dp" id="dp-u">▲</button>
+    <button class="dp" id="dp-l">◄</button>
+    <button class="dp" id="dp-d">▼</button>
+    <button class="dp" id="dp-r">►</button>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover-overlay">
+  <div id="gameover-box">
+    <h2>MAZE COMPLETE</h2>
+    <div class="rank-list" id="rank-list"></div>
+    <button class="btn-gold" id="play-again-btn">Play Again</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ── State ──────────────────────────────────────────────────────────────────────
+let ws = null, myIdx = null, myName = '', sessionId = null;
+let players = [], maze = null, gameStarted = false;
+let finishes = []; // {playerIdx, name, rank, elapsed}
+
+const DR = [-1, 0, 1, 0]; // N E S W
+const DC = [0, 1, 0, -1];
+const P_COLORS = ['#5080ff','#ff6030','#40cc40','#cc40cc'];
+const MEDALS   = ['🥇','🥈','🥉','4th'];
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// ── Canvas setup ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('maze-canvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const sz = Math.min(414, window.innerWidth - 16);
+  canvas.width = canvas.height = sz;
+  if (gameStarted && maze) drawMaze();
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── Draw ───────────────────────────────────────────────────────────────────────
+function drawMaze() {
+  if (!maze) return;
+  const { size, passages, exit } = maze;
+  const cw = canvas.width / size;
+  const wt = Math.max(1, cw * 0.14);
+
+  // Wall fill
+  ctx.fillStyle = '#08121e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Floor corridors
+  ctx.fillStyle = '#162636';
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const p = passages[r * size + c];
+      const x = c * cw, y = r * cw;
+      ctx.fillRect(x + wt, y + wt, cw - 2*wt, cw - 2*wt);
+      if (p & 1) ctx.fillRect(x + wt,       y - wt,       cw - 2*wt, 2*wt); // N
+      if (p & 2) ctx.fillRect(x + cw - wt,  y + wt,       2*wt, cw - 2*wt); // E
+      if (p & 4) ctx.fillRect(x + wt,       y + cw - wt,  cw - 2*wt, 2*wt); // S
+      if (p & 8) ctx.fillRect(x - wt,       y + wt,       2*wt, cw - 2*wt); // W
+    }
+  }
+
+  // Spawn marker (center, subtle)
+  const sc2 = Math.floor(size / 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(sc2 * cw + wt, sc2 * cw + wt, cw - 2*wt, cw - 2*wt);
+
+  // Exit cell (gold)
+  const { r: er, c: ec, d: ed } = exit;
+  ctx.fillStyle = 'rgba(212,175,55,0.55)';
+  ctx.fillRect(ec * cw + wt, er * cw + wt, cw - 2*wt, cw - 2*wt);
+  // open exit gap toward edge
+  if (ed === 0) ctx.fillRect(ec * cw + wt, er * cw - wt,       cw - 2*wt, 2*wt);
+  if (ed === 1) ctx.fillRect(ec * cw + cw - wt, er * cw + wt,  2*wt, cw - 2*wt);
+  if (ed === 2) ctx.fillRect(ec * cw + wt, er * cw + cw - wt,  cw - 2*wt, 2*wt);
+  if (ed === 3) ctx.fillRect(ec * cw - wt, er * cw + wt,        2*wt, cw - 2*wt);
+
+  // Exit star
+  ctx.fillStyle = '#d4af37';
+  ctx.font = `bold ${Math.max(6, Math.floor(cw * 0.55))}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('★', (ec + 0.5) * cw, (er + 0.5) * cw);
+
+  // Players
+  for (const p of players) {
+    if (p.finished) continue;
+    const px = (p.c + 0.5) * cw;
+    const py = (p.r + 0.5) * cw;
+    const rad = cw * 0.31;
+    ctx.fillStyle = P_COLORS[p.idx % 4];
+    ctx.beginPath();
+    ctx.arc(px, py, rad, 0, Math.PI * 2);
+    ctx.fill();
+    if (p.idx === myIdx) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = Math.max(1, cw * 0.07);
+      ctx.stroke();
+    }
+    if (cw >= 11) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(6, Math.floor(cw * 0.28))}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.idx + 1, px, py);
+    }
+  }
+}
+
+// ── Game loop ──────────────────────────────────────────────────────────────────
+const keysDown = new Set();
+const KEY_DIR  = { ArrowUp:0,KeyW:0, ArrowRight:1,KeyD:1, ArrowDown:2,KeyS:2, ArrowLeft:3,KeyA:3 };
+let lastMoveTs = 0;
+const MOVE_MS  = 135;
+
+function gameLoop(ts) {
+  requestAnimationFrame(gameLoop);
+  if (!gameStarted || !maze) return;
+  const me = players.find(p => p.idx === myIdx);
+  if (me && !me.finished && ts - lastMoveTs > MOVE_MS) {
+    for (const code of keysDown) {
+      const d = KEY_DIR[code];
+      if (d !== undefined) { tryMove(d); lastMoveTs = ts; break; }
+    }
+  }
+  drawMaze();
+}
+requestAnimationFrame(gameLoop);
+
+function tryMove(d) {
+  const me = players.find(p => p.idx === myIdx);
+  if (!me || me.finished || !maze) return;
+  if (!(maze.passages[me.r * maze.size + me.c] & (1 << d))) return;
+  wsSend({ type: 'move', dir: d });
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (!gameStarted || document.activeElement?.tagName === 'INPUT') return;
+  if (KEY_DIR[e.code] !== undefined) { e.preventDefault(); keysDown.add(e.code); }
+});
+document.addEventListener('keyup', e => keysDown.delete(e.code));
+
+// ── D-pad ──────────────────────────────────────────────────────────────────────
+[['dp-u',0],['dp-r',1],['dp-d',2],['dp-l',3]].forEach(([id, dir]) => {
+  const btn = document.getElementById(id);
+  let iv = null;
+  const start = () => {
+    tryMove(dir); btn.classList.add('held');
+    iv = setInterval(() => tryMove(dir), MOVE_MS);
+  };
+  const stop = () => { clearInterval(iv); iv = null; btn.classList.remove('held'); };
+  btn.addEventListener('touchstart', e => { e.preventDefault(); start(); }, { passive: false });
+  btn.addEventListener('touchend',   e => { e.preventDefault(); stop();  }, { passive: false });
+  btn.addEventListener('touchcancel', stop);
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', stop);
+  btn.addEventListener('mouseleave', stop);
+});
+
+// ── Badges ────────────────────────────────────────────────────────────────────
+function renderBadges() {
+  const row = document.getElementById('player-row');
+  row.innerHTML = '';
+  const count = Math.max(2, players.length);
+  for (let i = 0; i < count; i++) {
+    const p = players.find(p => p.idx === i);
+    const el = document.createElement('div');
+    const fin = finishes.find(f => f.playerIdx === i);
+    if (p) {
+      el.className = `player-badge p${i}${p.idx === myIdx ? ' you' : ''}${p.finished ? ' done' : ''}`;
+      el.textContent = p.name + (p.idx === myIdx ? ' (you)' : '');
+      if (fin) {
+        const tag = document.createElement('span');
+        tag.className = 'rank-tag';
+        tag.textContent = MEDALS[fin.rank - 1] || `#${fin.rank}`;
+        el.appendChild(tag);
+      }
+    } else {
+      el.className = 'player-badge empty';
+      el.textContent = `P${i + 1}`;
+    }
+    row.appendChild(el);
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Game over ─────────────────────────────────────────────────────────────────
+function renderGameOver() {
+  const list = document.getElementById('rank-list');
+  list.innerHTML = '';
+  [...finishes].sort((a, b) => a.rank - b.rank).forEach(f => {
+    const isMe = f.playerIdx === myIdx;
+    list.innerHTML += `<div class="rank-item" style="${isMe ? 'border:1px solid #d4af37' : ''}">
+      <span class="rank-medal">${MEDALS[f.rank - 1] || '#' + f.rank}</span>
+      <span class="rank-name">${esc(f.name)}${isMe ? ' (you)' : ''}</span>
+      <span class="rank-time">${fmtTime(f.elapsed)}</span>
+    </div>`;
+  });
+  players.filter(p => !finishes.find(f => f.playerIdx === p.idx)).forEach(p => {
+    list.innerHTML += `<div class="rank-item">
+      <span class="rank-medal">—</span>
+      <span class="rank-name">${esc(p.name)}${p.idx === myIdx ? ' (you)' : ''}</span>
+      <span class="rank-time">DNF</span>
+    </div>`;
+  });
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function openWs(onOpen) {
+  if (ws) { ws.onclose = null; ws.close(); }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/maze`);
+  ws.onopen  = onOpen;
+  ws.onmessage = e => { try { handle(JSON.parse(e.data)); } catch {} };
+  ws.onclose = () => {};
+}
+function wsSend(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handle(msg) {
+  switch (msg.type) {
+    case 'joined':
+      sessionId = msg.sessionId; myIdx = msg.yourIdx;
+      players = msg.players.map(p => ({ ...p, r: 0, c: 0, finished: false }));
+      document.getElementById('session-id-display').textContent = sessionId;
+      renderWaiting();
+      if (myIdx === 0) {
+        document.getElementById('start-btn').style.display = '';
+        document.getElementById('waiting-msg').textContent = 'Invite friends or start solo!';
+      }
+      showScreen('waiting');
+      break;
+
+    case 'lobby_update':
+      players = msg.players.map(p => ({ ...p, r: 0, c: 0, finished: false }));
+      renderWaiting();
+      break;
+
+    case 'start':
+      maze = msg.maze;
+      gameStarted = true;
+      finishes = [];
+      players = msg.players.map(p => ({ ...p, finished: false }));
+      keysDown.clear();
+      renderBadges();
+      showScreen('game');
+      break;
+
+    case 'player_move': {
+      const p = players.find(p => p.idx === msg.playerIdx);
+      if (p) { p.r = msg.r; p.c = msg.c; }
+      break;
+    }
+
+    case 'finish': {
+      const p = players.find(p => p.idx === msg.playerIdx);
+      if (p) p.finished = true;
+      finishes.push({ playerIdx: msg.playerIdx, name: msg.name, rank: msg.rank, elapsed: msg.elapsed });
+      showToast(`${MEDALS[msg.rank - 1] || '#' + msg.rank} ${msg.name} escaped! (${fmtTime(msg.elapsed)})`);
+      renderBadges();
+      if (msg.playerIdx === myIdx || players.every(p => p.finished)) {
+        renderGameOver();
+        document.getElementById('gameover-overlay').classList.add('visible');
+      }
+      break;
+    }
+
+    case 'player_left': {
+      const p = players.find(p => p.idx === msg.playerIdx);
+      if (p) p.finished = true;
+      renderBadges();
+      break;
+    }
+
+    case 'error':
+      document.getElementById('lobby-err').textContent = msg.message;
+      showScreen('lobby');
+      break;
+  }
+}
+
+// ── Waiting room ──────────────────────────────────────────────────────────────
+function renderWaiting() {
+  const el = document.getElementById('waiting-players');
+  el.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'waiting-player';
+    if (p.idx === 0) {
+      const cr = document.createElement('span');
+      cr.className = 'crown'; cr.textContent = '★';
+      div.appendChild(cr);
+    }
+    const nm = document.createElement('span');
+    nm.textContent = p.name + (p.idx === myIdx ? ' (you)' : '');
+    div.appendChild(nm);
+    el.appendChild(div);
+  });
+}
+
+// ── Session list ──────────────────────────────────────────────────────────────
+let sessPollTimer = null;
+function startSessPoll() { fetchSessions(); sessPollTimer = setInterval(fetchSessions, 5000); }
+function stopSessPoll()  { clearInterval(sessPollTimer); sessPollTimer = null; }
+function fetchSessions() {
+  fetch('/api/maze/sessions').then(r => r.json()).then(list => {
+    document.getElementById('sess-badge').textContent = list.length;
+    const c = document.getElementById('sess-list');
+    if (!list.length) { c.innerHTML = '<div class="std-no-sess">No active games — host one!</div>'; return; }
+    c.innerHTML = list.map(s => `
+      <div class="std-sess-row">
+        <div class="std-sess-info">
+          <div class="std-sess-host">${esc(s.hostName)}'s maze</div>
+          <div class="std-sess-meta">${s.players}/4 players · waiting</div>
+        </div>
+        ${s.canJoin ? `<button class="std-btn-join" onclick="joinSession(${s.id})">Join</button>` : ''}
+      </div>`).join('');
+  }).catch(() => {});
+}
+function joinSession(id) {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll(); myName = name;
+  openWs(() => wsSend({ type: 'join', name, sessionId: id }));
+}
+
+// ── Lobby ─────────────────────────────────────────────────────────────────────
+document.getElementById('host-btn').addEventListener('click', () => {
+  const name = document.getElementById('name-in').value.trim();
+  if (!name) { document.getElementById('lobby-err').textContent = 'Please enter your name.'; return; }
+  document.getElementById('lobby-err').textContent = '';
+  stopSessPoll(); myName = name;
+  openWs(() => wsSend({ type: 'join', name }));
+});
+document.getElementById('name-in').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('host-btn').click();
+});
+
+// ── Waiting ───────────────────────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', () => wsSend({ type: 'start' }));
+document.getElementById('leave-btn').addEventListener('click', () => {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  gameStarted = false; maze = null;
+  showScreen('lobby'); startSessPoll();
+});
+document.getElementById('session-id-display').addEventListener('click', () => {
+  if (!sessionId) return;
+  navigator.clipboard?.writeText(String(sessionId)).then(() => {
+    const d = document.getElementById('session-id-display');
+    const old = d.textContent; d.textContent = 'Copied!';
+    setTimeout(() => d.textContent = old, 1200);
+  });
+});
+
+// ── Play again ────────────────────────────────────────────────────────────────
+document.getElementById('play-again-btn').addEventListener('click', () => {
+  document.getElementById('gameover-overlay').classList.remove('visible');
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  maze = null; players = []; gameStarted = false; finishes = [];
+  document.getElementById('name-in').value = myName;
+  showScreen('lobby'); startSessPoll();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+startSessPoll();
+
+// ── Name overlay ──────────────────────────────────────────────────────────────
+window.onNameSet = name => { document.getElementById('name-in').value = name; };
+(function () {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  function connectPresence(name) {
+    const pw = new WebSocket(`${proto}://${location.host}/ws/presence`);
+    pw.onopen = () => pw.send(JSON.stringify({ type: 'presence_join', name, page: 'maze' }));
+  }
+  function submit() {
+    const val = document.getElementById('nov-input').value.trim();
+    if (!val) { document.getElementById('nov-input').focus(); return; }
+    localStorage.setItem('phub_name', val);
+    document.getElementById('name-overlay').style.display = 'none';
+    connectPresence(val);
+    if (typeof window.onNameSet === 'function') window.onNameSet(val);
+  }
+  document.getElementById('nov-btn').onclick = submit;
+  document.getElementById('nov-input').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  const saved = localStorage.getItem('phub_name');
+  if (saved) {
+    document.getElementById('name-overlay').style.display = 'none';
+    window.onNameSet(saved);
+    connectPresence(saved);
+  } else {
+    setTimeout(() => document.getElementById('nov-input').focus(), 50);
+  }
+})();
+</script>
+</body>
+</html>

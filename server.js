@@ -27,6 +27,7 @@ const snake      = require('./games/snake');
 const tank       = require('./games/tank');
 const go         = require('./games/go');
 const sudoku     = require('./games/sudoku');
+const maze       = require('./games/maze');
 const stats      = require('./stats');
 
 // ── Play-count tracking ───────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ const GAME_START_MSGS = [
   [tank,       'tank',       ['tank_create']],
   [go,         'go',         ['go_create']],
   [sudoku,     'sudoku',     ['start']],
+  [maze,       'maze',       ['start']],
 ];
 for (const [mod, game, types] of GAME_START_MSGS) {
   mod.wss.on('connection', ws => {
@@ -71,6 +73,7 @@ const GAME_JOIN_TRACK = [
   [snake,      'snake'],
   [tank,       'tank'],
   [sudoku,     'sudoku'],
+  [maze,       'maze'],
 ];
 for (const [mod, game] of GAME_JOIN_TRACK) {
   mod.wss.on('connection', ws => {
@@ -102,6 +105,7 @@ const PAGES = {
   '/tank':       'tank.html',
   '/go':         'go.html',
   '/sudoku':     'sudoku.html',
+  '/maze':       'maze.html',
 };
 
 
@@ -122,6 +126,7 @@ function requestHandler(req, res) {
     '/api/tank/sessions':       () => tank.getSessionList(),
     '/api/go/sessions':         () => go.getSessionList(),
     '/api/sudoku/sessions':     () => sudoku.getSessionList(),
+    '/api/maze/sessions':       () => maze.getSessionList(),
   };
   if (urlPath === '/api/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -220,6 +225,10 @@ httpsServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/sudoku') {
     sudoku.wss.handleUpgrade(req, socket, head, ws => {
       sudoku.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/maze') {
+    maze.wss.handleUpgrade(req, socket, head, ws => {
+      maze.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();

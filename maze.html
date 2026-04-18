@@ -160,7 +160,7 @@ h1{font-size:1.7rem;letter-spacing:6px;color:#d4af37;text-transform:uppercase;ma
 'use strict';
 // ── State ──────────────────────────────────────────────────────────────────────
 let ws = null, myIdx = null, myName = '', sessionId = null;
-let players = [], maze = null, gameStarted = false;
+let players = [], maze = null, gameStarted = false, moving = false;
 let finishes = []; // {playerIdx, name, rank, elapsed}
 
 const DR = [-1, 0, 1, 0]; // N E S W
@@ -237,6 +237,21 @@ function drawMaze() {
   ctx.textBaseline = 'middle';
   ctx.fillText('★', (ec + 0.5) * cw, (er + 0.5) * cw);
 
+  // Branch direction hints — highlight adjacent passable cells when my player is stopped
+  if (!moving && gameStarted) {
+    const me = players.find(p => p.idx === myIdx);
+    if (me && !me.finished) {
+      for (let d = 0; d < 4; d++) {
+        if (!(maze.passages[me.r * maze.size + me.c] & (1 << d))) continue;
+        const nr = me.r + DR[d], nc = me.c + DC[d];
+        if (nr >= 0 && nr < maze.size && nc >= 0 && nc < maze.size) {
+          ctx.fillStyle = 'rgba(150,190,255,0.18)';
+          ctx.fillRect(nc * cw + wt, nr * cw + wt, cw - 2*wt, cw - 2*wt);
+        }
+      }
+    }
+  }
+
   // Players
   for (const p of players) {
     if (p.finished) continue;
@@ -263,54 +278,35 @@ function drawMaze() {
 }
 
 // ── Game loop ──────────────────────────────────────────────────────────────────
-const keysDown = new Set();
-const KEY_DIR  = { ArrowUp:0,KeyW:0, ArrowRight:1,KeyD:1, ArrowDown:2,KeyS:2, ArrowLeft:3,KeyA:3 };
-let lastMoveTs = 0;
-const MOVE_MS  = 135;
+const KEY_DIR = { ArrowUp:0,KeyW:0, ArrowRight:1,KeyD:1, ArrowDown:2,KeyS:2, ArrowLeft:3,KeyA:3 };
 
-function gameLoop(ts) {
+function gameLoop() {
   requestAnimationFrame(gameLoop);
-  if (!gameStarted || !maze) return;
-  const me = players.find(p => p.idx === myIdx);
-  if (me && !me.finished && ts - lastMoveTs > MOVE_MS) {
-    for (const code of keysDown) {
-      const d = KEY_DIR[code];
-      if (d !== undefined) { tryMove(d); lastMoveTs = ts; break; }
-    }
-  }
-  drawMaze();
+  if (gameStarted && maze) drawMaze();
 }
 requestAnimationFrame(gameLoop);
 
 function tryMove(d) {
+  if (moving) return;
   const me = players.find(p => p.idx === myIdx);
-  if (!me || me.finished || !maze) return;
+  if (!me || me.finished || !maze || !gameStarted) return;
   if (!(maze.passages[me.r * maze.size + me.c] & (1 << d))) return;
+  moving = true;
   wsSend({ type: 'move', dir: d });
 }
 
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (!gameStarted || document.activeElement?.tagName === 'INPUT') return;
-  if (KEY_DIR[e.code] !== undefined) { e.preventDefault(); keysDown.add(e.code); }
+  const d = KEY_DIR[e.code];
+  if (d !== undefined) { e.preventDefault(); tryMove(d); }
 });
-document.addEventListener('keyup', e => keysDown.delete(e.code));
 
 // ── D-pad ──────────────────────────────────────────────────────────────────────
 [['dp-u',0],['dp-r',1],['dp-d',2],['dp-l',3]].forEach(([id, dir]) => {
   const btn = document.getElementById(id);
-  let iv = null;
-  const start = () => {
-    tryMove(dir); btn.classList.add('held');
-    iv = setInterval(() => tryMove(dir), MOVE_MS);
-  };
-  const stop = () => { clearInterval(iv); iv = null; btn.classList.remove('held'); };
-  btn.addEventListener('touchstart', e => { e.preventDefault(); start(); }, { passive: false });
-  btn.addEventListener('touchend',   e => { e.preventDefault(); stop();  }, { passive: false });
-  btn.addEventListener('touchcancel', stop);
-  btn.addEventListener('mousedown', start);
-  btn.addEventListener('mouseup', stop);
-  btn.addEventListener('mouseleave', stop);
+  btn.addEventListener('touchstart', e => { e.preventDefault(); tryMove(dir); }, { passive: false });
+  btn.addEventListener('mousedown',  () => tryMove(dir));
 });
 
 // ── Badges ────────────────────────────────────────────────────────────────────
@@ -370,6 +366,20 @@ function renderGameOver() {
   });
 }
 
+// ── Path animation ────────────────────────────────────────────────────────────
+function animatePath(playerIdx, path, onDone) {
+  const p = players.find(p => p.idx === playerIdx);
+  if (!p || !path.length) { onDone?.(); return; }
+  let i = 0;
+  const STEP_MS = 55;
+  const tick = () => {
+    p.r = path[i].r; p.c = path[i].c; i++;
+    if (i < path.length) setTimeout(tick, STEP_MS);
+    else onDone?.();
+  };
+  setTimeout(tick, STEP_MS);
+}
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function openWs(onOpen) {
   if (ws) { ws.onclose = null; ws.close(); }
@@ -404,18 +414,18 @@ function handle(msg) {
     case 'start':
       maze = msg.maze;
       gameStarted = true;
+      moving = false;
       finishes = [];
       players = msg.players.map(p => ({ ...p, finished: false }));
-      keysDown.clear();
       renderBadges();
       showScreen('game');
       break;
 
-    case 'player_move': {
-      const p = players.find(p => p.idx === msg.playerIdx);
-      if (p) { p.r = msg.r; p.c = msg.c; }
+    case 'player_path':
+      animatePath(msg.playerIdx, msg.path, () => {
+        if (msg.playerIdx === myIdx) moving = false;
+      });
       break;
-    }
 
     case 'finish': {
       const p = players.find(p => p.idx === msg.playerIdx);
@@ -522,7 +532,7 @@ document.getElementById('session-id-display').addEventListener('click', () => {
 document.getElementById('play-again-btn').addEventListener('click', () => {
   document.getElementById('gameover-overlay').classList.remove('visible');
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
-  maze = null; players = []; gameStarted = false; finishes = [];
+  maze = null; players = []; gameStarted = false; moving = false; finishes = [];
   document.getElementById('name-in').value = myName;
   showScreen('lobby'); startSessPoll();
 });

@@ -135,28 +135,46 @@ wss.on('connection', ws => {
       const d = +msg.dir;
       if (d < 0 || d > 3) return;
       const { passages, exit, size } = session.maze;
-      const idx = player.r * size + player.c;
-      if (!(passages[idx] & (1 << d))) return; // wall blocks move
+      if (!(passages[player.r * size + player.c] & (1 << d))) return;
 
-      if (player.r === exit.r && player.c === exit.c && d === exit.d) {
-        // Player exits the maze
+      const doFinish = (path) => {
         player.finished = true;
         player.rank = ++session.finishCount;
         const elapsed = Math.round((Date.now() - session.startTime) / 1000);
-        bcast(session, {
-          type: 'finish', playerIdx: player.idx, name: player.name,
-          rank: player.rank, elapsed,
-        });
-        if (session.players.every(p => p.finished)) {
-          session.state = 'done';
-          sessions.delete(session.id);
-        }
+        if (path.length) bcast(session, { type: 'player_path', playerIdx: player.idx, path });
+        bcast(session, { type: 'finish', playerIdx: player.idx, name: player.name, rank: player.rank, elapsed });
+        if (session.players.every(p => p.finished)) { session.state = 'done'; sessions.delete(session.id); }
+      };
+
+      // First step is the exit?
+      if (player.r === exit.r && player.c === exit.c && d === exit.d) {
+        doFinish([]);
         return;
       }
 
-      player.r += DR[d];
-      player.c += DC[d];
-      bcast(session, { type: 'player_move', playerIdx: player.idx, r: player.r, c: player.c });
+      // Take first step
+      let r = player.r + DR[d], c = player.c + DC[d];
+      let fromDir = OPP[d];
+      const path = [{ r, c }];
+
+      // Auto-advance through corridors — stop at branch (2+ choices) or dead end (0 choices)
+      for (let steps = 0; steps < 500; steps++) {
+        const avail = [0, 1, 2, 3].filter(d2 => d2 !== fromDir && (passages[r * size + c] & (1 << d2)));
+        if (avail.length !== 1) break;
+        const nextD = avail[0];
+        // Would auto-advance step exit the maze?
+        if (r === exit.r && c === exit.c && nextD === exit.d) {
+          player.r = r; player.c = c;
+          doFinish(path);
+          return;
+        }
+        r += DR[nextD]; c += DC[nextD];
+        fromDir = OPP[nextD];
+        path.push({ r, c });
+      }
+
+      player.r = r; player.c = c;
+      bcast(session, { type: 'player_path', playerIdx: player.idx, path });
       return;
     }
   });

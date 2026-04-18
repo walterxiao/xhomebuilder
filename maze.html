@@ -215,6 +215,18 @@ function drawMaze() {
     }
   }
 
+  // Player trails
+  const TRAIL_RGBA = ['rgba(80,128,255,.25)','rgba(255,96,48,.25)','rgba(64,204,64,.25)','rgba(204,64,204,.25)'];
+  for (const p of players) {
+    if (!p.trail || !p.trail.size) continue;
+    ctx.fillStyle = TRAIL_RGBA[p.idx % 4];
+    for (const key of p.trail) {
+      const ci = key.indexOf(',');
+      const tr = +key.slice(0, ci), tc = +key.slice(ci + 1);
+      ctx.fillRect(tc * cw + wt, tr * cw + wt, cw - 2*wt, cw - 2*wt);
+    }
+  }
+
   // Spawn marker (center, subtle)
   const sc2 = Math.floor(size / 2);
   ctx.fillStyle = 'rgba(255,255,255,0.06)';
@@ -255,8 +267,8 @@ function drawMaze() {
   // Players
   for (const p of players) {
     if (p.finished) continue;
-    const px = (p.c + 0.5) * cw;
-    const py = (p.r + 0.5) * cw;
+    const px = ((p.drawC ?? p.c) + 0.5) * cw;
+    const py = ((p.drawR ?? p.r) + 0.5) * cw;
     const rad = cw * 0.31;
     ctx.fillStyle = P_COLORS[p.idx % 4];
     ctx.beginPath();
@@ -279,10 +291,34 @@ function drawMaze() {
 
 // ── Game loop ──────────────────────────────────────────────────────────────────
 const KEY_DIR = { ArrowUp:0,KeyW:0, ArrowRight:1,KeyD:1, ArrowDown:2,KeyS:2, ArrowLeft:3,KeyA:3 };
+const ANIM_SPEED = 14; // cells per second
+let lastTs = 0;
 
-function gameLoop() {
+function updateAnims(dt) {
+  for (const p of players) {
+    if (!p.animQueue || !p.animQueue.length) continue;
+    const target = p.animQueue[0];
+    const dr = target.r - p.drawR, dc = target.c - p.drawC;
+    const dist = Math.sqrt(dr * dr + dc * dc);
+    if (dist < 0.01) {
+      p.drawR = target.r; p.drawC = target.c;
+      p.animQueue.shift();
+      if (!p.animQueue.length && p.idx === myIdx) moving = false;
+    } else {
+      const step = Math.min(ANIM_SPEED * dt, dist);
+      p.drawR += (dr / dist) * step;
+      p.drawC += (dc / dist) * step;
+    }
+  }
+}
+
+function gameLoop(ts) {
   requestAnimationFrame(gameLoop);
-  if (gameStarted && maze) drawMaze();
+  if (!gameStarted || !maze) return;
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  updateAnims(dt);
+  drawMaze();
 }
 requestAnimationFrame(gameLoop);
 
@@ -366,20 +402,6 @@ function renderGameOver() {
   });
 }
 
-// ── Path animation ────────────────────────────────────────────────────────────
-function animatePath(playerIdx, path, onDone) {
-  const p = players.find(p => p.idx === playerIdx);
-  if (!p || !path.length) { onDone?.(); return; }
-  let i = 0;
-  const STEP_MS = 55;
-  const tick = () => {
-    p.r = path[i].r; p.c = path[i].c; i++;
-    if (i < path.length) setTimeout(tick, STEP_MS);
-    else onDone?.();
-  };
-  setTimeout(tick, STEP_MS);
-}
-
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function openWs(onOpen) {
   if (ws) { ws.onclose = null; ws.close(); }
@@ -416,16 +438,30 @@ function handle(msg) {
       gameStarted = true;
       moving = false;
       finishes = [];
-      players = msg.players.map(p => ({ ...p, finished: false }));
+      players = msg.players.map(p => ({
+        ...p, finished: false,
+        drawR: msg.spawn.r, drawC: msg.spawn.c,
+        animQueue: [],
+        trail: new Set([`${msg.spawn.r},${msg.spawn.c}`]),
+      }));
       renderBadges();
       showScreen('game');
       break;
 
-    case 'player_path':
-      animatePath(msg.playerIdx, msg.path, () => {
-        if (msg.playerIdx === myIdx) moving = false;
-      });
+    case 'player_path': {
+      const p = players.find(p => p.idx === msg.playerIdx);
+      if (!p) break;
+      if (msg.path.length) {
+        const last = msg.path[msg.path.length - 1];
+        p.r = last.r; p.c = last.c;
+        if (!p.trail) p.trail = new Set();
+        for (const cell of msg.path) p.trail.add(`${cell.r},${cell.c}`);
+        p.animQueue = [...msg.path];
+      } else if (msg.playerIdx === myIdx) {
+        moving = false;
+      }
       break;
+    }
 
     case 'finish': {
       const p = players.find(p => p.idx === msg.playerIdx);

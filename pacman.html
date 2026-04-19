@@ -27,10 +27,9 @@
     }
     .subtitle { color: #555577; font-size: 0.75rem; letter-spacing: 3px; margin-bottom: 16px; }
 
-    #lobby, #game-area { width: 100%; max-width: 900px; }
+    #lobby { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 900px; }
+    #game-area { display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 900px; }
 
-    /* ── Lobby ── */
-    #lobby { display: flex; flex-direction: column; align-items: center; gap: 12px; }
     .lobby-card {
       background: #12122a; border: 1px solid #2a2a5a; border-radius: 8px;
       padding: 24px 32px; width: 100%; max-width: 420px; text-align: center;
@@ -59,28 +58,16 @@
       justify-content: space-between; align-items: center; cursor: pointer;
     }
     .session-item:hover { border-color: #FFD700; }
-    .session-item .shost { font-size: 0.88rem; color: #e0d5c1; }
-    .session-item .sstatus { font-size: 0.75rem; color: #6060a0; }
+    .shost { font-size: 0.88rem; }
+    .sstatus { font-size: 0.75rem; color: #6060a0; }
     #no-sessions { color: #444466; font-size: 0.8rem; text-align: center; padding: 8px; }
 
-    /* ── Player list (lobby/game) ── */
     #player-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
-    .player-chip {
-      border-radius: 20px; padding: 4px 12px; font-size: 0.78rem;
-      border: 1px solid; letter-spacing: 1px;
-    }
+    .player-chip { border-radius: 20px; padding: 4px 12px; font-size: 0.78rem; border: 1px solid; letter-spacing: 1px; }
 
-    /* ── Game ── */
-    #game-area { display: none; flex-direction: column; align-items: center; gap: 10px; }
-    #scores-bar {
-      display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
-      font-size: 0.82rem; letter-spacing: 1px;
-    }
-    .score-chip {
-      padding: 4px 12px; border-radius: 20px; border: 1px solid;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .score-chip .lives { color: #FFD700; font-size: 0.7rem; }
+    #scores-bar { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 0.82rem; letter-spacing: 1px; }
+    .score-chip { padding: 4px 12px; border-radius: 20px; border: 1px solid; display: flex; align-items: center; gap: 6px; }
+    .sc-lives { color: #FFD700; font-size: 0.7rem; }
 
     #canvas-wrap { position: relative; line-height: 0; }
     canvas { display: block; border: 2px solid #2a2a5a; border-radius: 4px; }
@@ -91,28 +78,27 @@
       background: rgba(0,0,0,0.82); border-radius: 4px;
     }
     #overlay h2 { color: #FFD700; font-size: 1.2rem; letter-spacing: 4px; margin-bottom: 8px; }
-    #overlay p { color: #e0d5c1; font-size: 0.85rem; margin-bottom: 12px; }
-    #overlay .score-list { font-size: 0.82rem; color: #aaa; margin-bottom: 14px; line-height: 1.8; }
+    #overlay p  { color: #e0d5c1; font-size: 0.85rem; margin-bottom: 12px; }
+    .ov-score-list { font-size: 0.82rem; color: #aaa; margin-bottom: 14px; line-height: 1.8; text-align: center; }
 
-    /* ── D-pad ── */
     #dpad {
-      display: grid; grid-template-columns: 40px 40px 40px;
-      grid-template-rows: 40px 40px 40px; gap: 4px; margin-top: 6px;
+      display: grid; grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px; gap: 4px; margin-top: 6px;
     }
     .dp {
       background: #12122a; border: 1px solid #2a2a5a; border-radius: 6px;
       color: #e0d5c1; font-size: 1.1rem; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      user-select: none; -webkit-user-select: none;
+      user-select: none; -webkit-user-select: none; touch-action: manipulation;
     }
     .dp:active { background: #1e1e4a; border-color: #FFD700; }
     .dp-up    { grid-column: 2; grid-row: 1; }
     .dp-left  { grid-column: 1; grid-row: 2; }
-    .dp-center{ grid-column: 2; grid-row: 2; background: transparent; border-color: transparent; cursor: default; }
+    .dp-mid   { grid-column: 2; grid-row: 2; font-size: 0.7rem; color: #444466; border-color: #1a1a3a; background: #0a0a1a; }
     .dp-right { grid-column: 3; grid-row: 2; }
     .dp-down  { grid-column: 2; grid-row: 3; }
 
-    #status-msg { font-size: 0.78rem; color: #666688; min-height: 1.2em; }
+    #status-msg { font-size: 0.78rem; color: #888; min-height: 1.2em; text-align: center; }
 
     @media (max-width: 500px) {
       h1 { font-size: 1.1rem; }
@@ -124,7 +110,6 @@
 <h1>Pac-Man</h1>
 <div class="subtitle">Multiplayer · Eat dots · Avoid ghosts</div>
 
-<!-- ── Lobby ── -->
 <div id="lobby">
   <div class="lobby-card">
     <h2>Join / Create</h2>
@@ -135,26 +120,24 @@
     </div>
     <div id="player-list"></div>
   </div>
-
   <div id="session-list"></div>
 </div>
 
-<!-- ── Game area ── -->
 <div id="game-area">
   <div id="scores-bar"></div>
   <div id="canvas-wrap">
     <canvas id="cv"></canvas>
     <div id="overlay" style="display:none">
       <h2 id="ov-title"></h2>
-      <p id="ov-msg"></p>
-      <div class="score-list" id="ov-scores"></div>
+      <p  id="ov-msg"></p>
+      <div class="ov-score-list" id="ov-scores"></div>
       <button id="ov-back">Back to Lobby</button>
     </div>
   </div>
   <div id="dpad">
     <div class="dp dp-up"    data-dir="0">▲</div>
     <div class="dp dp-left"  data-dir="3">◀</div>
-    <div class="dp dp-center"></div>
+    <div class="dp dp-mid">●</div>
     <div class="dp dp-right" data-dir="1">▶</div>
     <div class="dp dp-down"  data-dir="2">▼</div>
   </div>
@@ -165,38 +148,32 @@
 'use strict';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CELL  = 26;
-const ROWS  = 22;
-const COLS  = 21;
-const PAC_COLORS  = ['#FFD700','#FF6060','#60FF60','#60C0FF'];
-const PAC_NAMES_C = ['#B89000','#B03030','#30A030','#3080B0'];
-const GHOST_FRIGHT = '#4444FF';
+const CELL = 26;
+const ROWS = 22, COLS = 21;
 
-// Map cell types
 const WALL = 1, DOT = 0, POWER = 2, EMPTY = 3, GHOST_HOUSE = 4;
 
-// Dir vectors: N E S W
-const DR = [-1, 0, 1, 0];
-const DC = [0, 1, 0, -1];
+const DR4 = [-1, 0, 1, 0];
+const DC4 = [0, 1, 0, -1];
+
+const PAC_COLORS  = ['#FFD700', '#FF6060', '#60FF60', '#60C0FF'];
+const PAC_BORDER  = ['#B89000', '#B03030', '#30A030', '#3080B0'];
+const GHOST_FRIGHT = '#1a1aCC';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const proto  = location.protocol === 'https:' ? 'wss' : 'ws';
-const ws     = new WebSocket(`${proto}://${location.host}/ws/pacman`);
-let myIdx    = -1;
-let myName   = localStorage.getItem('pacman_name') || '';
-let sessionId = null;
-let isHost   = false;
-let gameState = 'lobby'; // 'lobby' | 'waiting' | 'playing' | 'done'
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const ws    = new WebSocket(`${proto}://${location.host}/ws/pacman`);
+let myIdx   = -1;
+let myName  = localStorage.getItem('pacman_name') || '';
+let gameState = 'lobby';
 
-// Game data
-let map = null;        // 2D array (client copy — dots eaten)
-let players = [];      // { idx, name, r, c, lives, score, dead, drawR, drawC, mouthAngle, mouthDir }
-let ghosts  = [];      // { idx, name, color, r, c, frightened, drawR, drawC }
+let map     = null;
+let players = [];  // { idx, name, r, c, lives, score, dead, drawR, drawC, mouthAngle, mouthDir, bounceR, bounceC }
+let ghosts  = [];  // { idx, name, color, r, c, frightened, drawR, drawC }
 let dotsLeft = 0;
 
-// Animation
 let lastTime = 0;
-const MOVE_SPEED = 8; // cells/sec interpolation
+const INTERP = 12; // lerp speed (cells/sec apparent)
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const lobbyEl    = document.getElementById('lobby');
@@ -223,12 +200,10 @@ if (myName) nameInput.value = myName;
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 ws.addEventListener('message', e => {
-  let msg;
-  try { msg = JSON.parse(e.data); } catch { return; }
+  let msg; try { msg = JSON.parse(e.data); } catch { return; }
   handle(msg);
 });
-
-ws.addEventListener('open', () => fetchSessions());
+ws.addEventListener('open',  () => fetchSessions());
 ws.addEventListener('close', () => setStatus('Disconnected.'));
 
 function send(obj) { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -240,7 +215,6 @@ createBtn.addEventListener('click', () => {
   myName = name;
   send({ type: 'join', name });
 });
-
 startBtn.addEventListener('click', () => send({ type: 'start' }));
 
 function fetchSessions() {
@@ -249,29 +223,25 @@ function fetchSessions() {
 setInterval(() => { if (gameState === 'lobby') fetchSessions(); }, 3000);
 
 function renderSessions(list) {
-  if (!list.length) {
-    sessionList.innerHTML = '<div id="no-sessions">No open games — create one!</div>';
-    return;
-  }
+  if (!list.length) { sessionList.innerHTML = '<div id="no-sessions">No open games — create one!</div>'; return; }
   sessionList.innerHTML = list.map(s =>
     `<div class="session-item" data-id="${s.id}">
        <span class="shost">${esc(s.hostName)}'s game</span>
        <span class="sstatus">${esc(s.status)} players</span>
-     </div>`
-  ).join('');
-  sessionList.querySelectorAll('.session-item').forEach(el => {
+     </div>`).join('');
+  sessionList.querySelectorAll('.session-item').forEach(el =>
     el.addEventListener('click', () => {
       const name = nameInput.value.trim() || 'Player';
       localStorage.setItem('pacman_name', name);
       myName = name;
       send({ type: 'join', name, sessionId: +el.dataset.id });
-    });
-  });
+    })
+  );
 }
 
 function renderPlayerChips(plist) {
   playerList.innerHTML = plist.map((p, i) =>
-    `<span class="player-chip" style="color:${PAC_COLORS[i%4]};border-color:${PAC_NAMES_C[i%4]}">${esc(p.name)}</span>`
+    `<span class="player-chip" style="color:${PAC_COLORS[i%4]};border-color:${PAC_BORDER[i%4]}">${esc(p.name)}</span>`
   ).join('');
 }
 
@@ -279,65 +249,79 @@ function renderPlayerChips(plist) {
 function handle(msg) {
   if (msg.type === 'joined') {
     myIdx = msg.yourIdx;
-    sessionId = msg.sessionId;
-    isHost = (myIdx === 0);
     gameState = 'waiting';
     renderPlayerChips(msg.players);
-    if (isHost) startBtn.style.display = 'inline-block';
-    setStatus(isHost ? 'You are host — press Start when ready.' : 'Waiting for host to start…');
+    if (myIdx === 0) startBtn.style.display = 'inline-block';
+    setStatus(myIdx === 0 ? 'You are host — press Start when ready.' : 'Waiting for host…');
     return;
   }
-
-  if (msg.type === 'lobby_update') {
-    renderPlayerChips(msg.players);
-    return;
-  }
-
-  if (msg.type === 'error') {
-    setStatus(msg.message);
-    return;
-  }
+  if (msg.type === 'lobby_update') { renderPlayerChips(msg.players); return; }
+  if (msg.type === 'error')        { setStatus(msg.message); return; }
 
   if (msg.type === 'start') {
-    map = msg.map;
+    map      = msg.map;
     dotsLeft = msg.dotsLeft;
-    players = msg.players.map(p => ({
-      ...p, drawR: p.r, drawC: p.c, mouthAngle: 0.25, mouthDir: 1,
+    players  = msg.players.map(p => ({
+      ...p, drawR: p.r, drawC: p.c,
+      mouthAngle: 0.25, mouthDir: 1,
+      bounceR: 0, bounceC: 0,
     }));
-    ghosts = msg.ghosts.map(g => ({ ...g, drawR: g.r, drawC: g.c }));
+    ghosts   = msg.ghosts.map(g => ({ ...g, drawR: g.r, drawC: g.c }));
     gameState = 'playing';
     showGame();
     renderScores();
+    lastTime = performance.now();
     requestAnimationFrame(loop);
     setStatus('');
     return;
   }
 
-  if (msg.type === 'move') {
-    const p = players[msg.playerIdx];
-    if (!p) return;
-    p.r = msg.r; p.c = msg.c;
-    p.score = msg.score;
+  if (msg.type === 'tick') {
     dotsLeft = msg.dotsLeft;
-    if (msg.cell === DOT || msg.cell === POWER) {
-      if (map) map[msg.r][msg.c] = EMPTY;
+    // Update player positions (server is authoritative)
+    for (const pu of msg.players) {
+      const p = players[pu.idx];
+      if (!p) continue;
+      // Wall bounce: if position didn't change in a direction, create a small nudge
+      const oldR = p.r, oldC = p.c;
+      p.r = pu.r; p.c = pu.c;
+      p.score = pu.score;
+      if (pu.ate && map) map[pu.ate.r][pu.ate.c] = EMPTY;
+      // Detect wall hit: position unchanged → apply bounce nudge toward intended dir
+      if (pu.scoreGain === 0 && p.r === oldR && p.c === oldC) {
+        // nudge is applied in animation
+        p.bounceR = 0.18 * DR4[p.facingDir ?? 0];
+        p.bounceC = 0.18 * DC4[p.facingDir ?? 0];
+      }
+    }
+    // Update ghost positions
+    for (const gu of msg.ghosts) {
+      const g = ghosts[gu.idx];
+      if (!g) continue;
+      g.r = gu.r; g.c = gu.c;
+      g.frightened = gu.frightened;
     }
     renderScores();
     return;
   }
 
-  if (msg.type === 'tick') {
-    for (const gd of msg.ghosts) {
-      const g = ghosts[gd.idx];
-      if (!g) continue;
-      g.r = gd.r; g.c = gd.c;
-      g.frightened = gd.frightened;
-    }
+  if (msg.type === 'player_died') {
+    const p = players[msg.playerIdx];
+    if (!p) return;
+    p.dead = true; p.lives = msg.lives;
+    renderScores();
+    if (msg.playerIdx === myIdx)
+      setStatus(p.lives > 0 ? 'You died! Press Space / tap ● to respawn.' : 'Out of lives!');
     return;
   }
 
-  if (msg.type === 'power') {
-    // Flash handled via ghost.frightened from tick
+  if (msg.type === 'respawn') {
+    const p = players[msg.playerIdx];
+    if (!p) return;
+    p.r = msg.r; p.c = msg.c; p.drawR = msg.r; p.drawC = msg.c;
+    p.dead = false; p.lives = msg.lives;
+    renderScores();
+    if (msg.playerIdx === myIdx) setStatus('');
     return;
   }
 
@@ -347,82 +331,55 @@ function handle(msg) {
     return;
   }
 
-  if (msg.type === 'player_died') {
-    const p = players[msg.playerIdx];
-    if (!p) return;
-    p.dead = true;
-    p.lives = msg.lives;
-    renderScores();
-    if (msg.playerIdx === myIdx && p.lives > 0) {
-      setStatus('You died! Press Space / tap center to respawn.');
-    } else if (msg.playerIdx === myIdx && p.lives <= 0) {
-      setStatus('Out of lives!');
-    }
-    return;
-  }
-
-  if (msg.type === 'respawn') {
-    const p = players[msg.playerIdx];
-    if (!p) return;
-    p.r = msg.r; p.c = msg.c;
-    p.drawR = msg.r; p.drawC = msg.c;
-    p.dead = false;
-    p.lives = msg.lives;
-    renderScores();
-    if (msg.playerIdx === myIdx) setStatus('');
-    return;
-  }
-
   if (msg.type === 'game_over') {
     gameState = 'done';
     ovTitle.textContent = msg.win ? 'YOU WIN!' : 'GAME OVER';
-    ovMsg.textContent   = msg.win ? 'All dots eaten!' : 'All lives lost.';
-    ovScores.innerHTML  = msg.scores
-      .sort((a, b) => b.score - a.score)
-      .map((s, i) => `${i+1}. ${esc(s.name)}  —  ${s.score} pts`)
-      .join('<br>');
+    ovMsg.textContent   = msg.win ? 'All dots cleared!' : 'All lives lost.';
+    ovScores.innerHTML  = msg.scores.sort((a,b) => b.score - a.score)
+      .map((s, i) => `${i+1}. ${esc(s.name)}  —  ${s.score} pts`).join('<br>');
     overlay.style.display = 'flex';
     return;
   }
 
-  if (msg.type === 'player_left') {
-    setStatus(`${esc(msg.name)} left.`);
-    return;
-  }
+  if (msg.type === 'player_left') { setStatus(`${esc(msg.name)} left.`); return; }
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
-const KEY_DIR = { ArrowUp:0, ArrowRight:1, ArrowDown:2, ArrowLeft:3,
-                  w:0, d:1, s:2, a:3, W:0, D:1, S:2, A:3 };
+const KEY_DIR = {
+  ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3,
+  w: 0, d: 1, s: 2, a: 3, W: 0, D: 1, S: 2, A: 3,
+};
+
 document.addEventListener('keydown', e => {
   if (gameState !== 'playing') return;
   const me = players[myIdx];
   if (!me) return;
 
   if ((e.key === ' ' || e.key === 'Enter') && me.dead && me.lives > 0) {
-    send({ type: 'respawn' });
-    return;
+    send({ type: 'respawn' }); return;
   }
 
   const d = KEY_DIR[e.key];
   if (d === undefined) return;
   e.preventDefault();
-  if (!me.dead) send({ type: 'dir', dir: d });
+  if (!me.dead) {
+    me.facingDir = d;
+    send({ type: 'dir', dir: d });
+  }
 });
 
-document.querySelectorAll('.dp').forEach(btn => {
-  const d = btn.dataset.dir;
-  if (d === undefined) return;
+document.querySelectorAll('.dp[data-dir]').forEach(btn =>
   btn.addEventListener('click', () => {
     if (gameState !== 'playing') return;
     const me = players[myIdx];
     if (!me || me.dead) return;
-    send({ type: 'dir', dir: +d });
-  });
-});
+    const d = +btn.dataset.dir;
+    me.facingDir = d;
+    send({ type: 'dir', dir: d });
+  })
+);
 
-// Tap center D-pad = respawn
-document.querySelector('.dp-center').addEventListener('click', () => {
+document.querySelector('.dp-mid').addEventListener('click', () => {
   if (gameState !== 'playing') return;
   const me = players[myIdx];
   if (me?.dead && me.lives > 0) send({ type: 'respawn' });
@@ -436,58 +393,61 @@ ovBack.addEventListener('click', () => {
 });
 
 // ── Render ────────────────────────────────────────────────────────────────────
-function showGame() {
-  lobbyEl.style.display = 'none';
-  gameEl.style.display  = 'flex';
-}
-function showLobby() {
-  gameEl.style.display  = 'none';
-  lobbyEl.style.display = 'flex';
-  playerList.innerHTML  = '';
-  startBtn.style.display = 'none';
-}
+function showGame()  { lobbyEl.style.display = 'none'; gameEl.style.display = 'flex'; }
+function showLobby() { gameEl.style.display  = 'none'; lobbyEl.style.display = 'flex'; playerList.innerHTML = ''; startBtn.style.display = 'none'; }
 
 function renderScores() {
   scoresBar.innerHTML = players.map((p, i) => {
-    const c = PAC_COLORS[i % 4];
-    const bc = PAC_NAMES_C[i % 4];
+    const col = PAC_COLORS[i % 4], bc = PAC_BORDER[i % 4];
     const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, 3 - p.lives));
-    return `<div class="score-chip" style="color:${c};border-color:${bc}">
+    return `<div class="score-chip" style="color:${col};border-color:${bc}">
       <span>${esc(p.name)}</span>
       <span>${p.score}</span>
-      <span class="lives">${hearts}</span>
+      <span class="sc-lives">${hearts}</span>
     </div>`;
   }).join('');
 }
 
-function setStatus(msg) { statusMsg.textContent = msg; }
+function setStatus(m) { statusMsg.textContent = m; }
 
 // ── Game Loop ─────────────────────────────────────────────────────────────────
 function loop(ts) {
   if (gameState !== 'playing' && gameState !== 'done') return;
-  const dt = Math.min((ts - lastTime) / 1000, 0.1);
+  const dt = Math.min((ts - lastTime) / 1000, 0.12);
   lastTime = ts;
-  updatePositions(dt);
+  update(dt);
   draw();
   requestAnimationFrame(loop);
 }
 
 function lerp(a, b, t) { return a + (b - a) * Math.min(t, 1); }
 
-function updatePositions(dt) {
-  const step = MOVE_SPEED * dt;
+function update(dt) {
+  const alpha = Math.min(INTERP * dt, 1);
   for (const p of players) {
     if (p.dead) continue;
-    p.drawR = lerp(p.drawR, p.r, step);
-    p.drawC = lerp(p.drawC, p.c, step);
+    // Apply bounce decay
+    if (p.bounceR || p.bounceC) {
+      const target_r = p.drawR + p.bounceR;
+      const target_c = p.drawC + p.bounceC;
+      p.drawR = lerp(p.drawR, target_r, alpha);
+      p.drawC = lerp(p.drawC, target_c, alpha);
+      p.bounceR *= 0.6; p.bounceC *= 0.6;
+      if (Math.abs(p.bounceR) < 0.01 && Math.abs(p.bounceC) < 0.01) {
+        p.bounceR = 0; p.bounceC = 0;
+      }
+    } else {
+      p.drawR = lerp(p.drawR, p.r, alpha);
+      p.drawC = lerp(p.drawC, p.c, alpha);
+    }
     // Mouth animation
     p.mouthAngle += p.mouthDir * dt * 3.5;
-    if (p.mouthAngle > 0.35) p.mouthDir = -1;
-    if (p.mouthAngle < 0.02) p.mouthDir = 1;
+    if (p.mouthAngle > 0.35) { p.mouthAngle = 0.35; p.mouthDir = -1; }
+    if (p.mouthAngle < 0.02) { p.mouthAngle = 0.02; p.mouthDir =  1; }
   }
   for (const g of ghosts) {
-    g.drawR = lerp(g.drawR, g.r, step);
-    g.drawC = lerp(g.drawC, g.c, step);
+    g.drawR = lerp(g.drawR, g.r, alpha);
+    g.drawC = lerp(g.drawC, g.c, alpha);
   }
 }
 
@@ -500,10 +460,6 @@ function draw() {
   drawPlayers();
 }
 
-function cellCenter(r, c) {
-  return { x: c * CELL + CELL / 2, y: r * CELL + CELL / 2 };
-}
-
 function drawMap() {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -512,7 +468,6 @@ function drawMap() {
       if (cell === WALL) {
         ctx.fillStyle = '#1a1a6a';
         ctx.fillRect(x, y, CELL, CELL);
-        // Inner border highlight
         ctx.strokeStyle = '#3333cc';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x + 1.5, y + 1.5, CELL - 3, CELL - 3);
@@ -522,64 +477,68 @@ function drawMap() {
       } else if (cell === DOT) {
         ctx.fillStyle = '#FFD8A0';
         ctx.beginPath();
-        ctx.arc(x + CELL/2, y + CELL/2, 2.5, 0, Math.PI * 2);
+        ctx.arc(x + CELL / 2, y + CELL / 2, 2.5, 0, Math.PI * 2);
         ctx.fill();
       } else if (cell === POWER) {
         const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
-        ctx.fillStyle = `rgba(255, 200, 50, ${0.7 + 0.3 * pulse})`;
+        ctx.fillStyle = `rgba(255,200,50,${0.7 + 0.3 * pulse})`;
         ctx.beginPath();
-        ctx.arc(x + CELL/2, y + CELL/2, 5 + pulse, 0, Math.PI * 2);
+        ctx.arc(x + CELL / 2, y + CELL / 2, 5 + pulse, 0, Math.PI * 2);
         ctx.fill();
       }
     }
   }
 }
 
-function drawPacMan(cx, cy, radius, mouthAngle, color) {
+function drawPacMan(cx, cy, r, mouthAngle, color) {
   ctx.fillStyle = color;
   ctx.beginPath();
-  const startAngle = mouthAngle * Math.PI;
-  const endAngle   = (2 - mouthAngle) * Math.PI;
   ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, radius, startAngle, endAngle);
+  ctx.arc(cx, cy, r, mouthAngle * Math.PI, (2 - mouthAngle) * Math.PI);
   ctx.closePath();
   ctx.fill();
 }
 
-function drawGhostShape(cx, cy, radius, color) {
+function drawGhost(cx, cy, r, color) {
   ctx.fillStyle = color;
   ctx.beginPath();
-  // Body
-  ctx.arc(cx, cy, radius, Math.PI, 0);
-  // Skirt
-  const bottom = cy + radius;
-  const steps = 3;
-  const w = radius * 2 / steps;
-  ctx.lineTo(cx + radius, bottom);
-  for (let i = 0; i < steps; i++) {
-    const x1 = cx + radius - i * w;
-    const x2 = cx + radius - (i + 0.5) * w;
-    const x3 = cx + radius - (i + 1) * w;
+  ctx.arc(cx, cy, r, Math.PI, 0);
+  // Wavy skirt
+  const bottom = cy + r;
+  const w = (r * 2) / 3;
+  ctx.lineTo(cx + r, bottom);
+  for (let i = 0; i < 3; i++) {
+    const x1 = cx + r - i * w;
+    const xm = cx + r - (i + 0.5) * w;
+    const x2 = cx + r - (i + 1) * w;
     ctx.lineTo(x1, bottom);
-    ctx.quadraticCurveTo(x2, bottom - radius * 0.4, x3, bottom);
+    ctx.quadraticCurveTo(xm, bottom - r * 0.38, x2, bottom);
   }
   ctx.closePath();
   ctx.fill();
-  // Eyes
+
   if (color !== GHOST_FRIGHT) {
-    const ew = radius * 0.28, eyeY = cy - radius * 0.1;
-    for (const ex of [cx - radius * 0.3, cx + radius * 0.3]) {
+    const ew = r * 0.28, eyeY = cy - r * 0.08;
+    for (const ex of [cx - r * 0.3, cx + r * 0.3]) {
       ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.ellipse(ex, eyeY, ew, ew * 1.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#00f';
+      ctx.beginPath(); ctx.ellipse(ex, eyeY, ew, ew * 1.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#00c';
       ctx.beginPath(); ctx.arc(ex + ew * 0.2, eyeY + ew * 0.2, ew * 0.5, 0, Math.PI * 2); ctx.fill();
     }
   } else {
-    // Frightened face
-    ctx.fillStyle = '#aaf';
-    ctx.font = `${radius}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('👻', cx, cy + 2);
+    // Frightened: white wavy mouth
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const my = cy + r * 0.35;
+    ctx.moveTo(cx - r * 0.4, my);
+    for (let i = 0; i < 4; i++) {
+      const mx = cx - r * 0.4 + (i + 0.5) * r * 0.2;
+      const my2 = my + (i % 2 === 0 ? r * 0.12 : -r * 0.12);
+      ctx.lineTo(mx, my2);
+    }
+    ctx.lineTo(cx + r * 0.4, my);
+    ctx.stroke();
   }
 }
 
@@ -587,34 +546,29 @@ function drawPlayers() {
   const r = CELL * 0.42;
   for (const p of players) {
     if (p.dead) continue;
-    const { x, y } = { x: p.drawC * CELL + CELL/2, y: p.drawR * CELL + CELL/2 };
-    const col = PAC_COLORS[p.idx % 4];
-
-    drawPacMan(x, y, r, p.mouthAngle, col);
-
+    const cx = p.drawC * CELL + CELL / 2;
+    const cy = p.drawR * CELL + CELL / 2;
+    drawPacMan(cx, cy, r, p.mouthAngle, PAC_COLORS[p.idx % 4]);
     // Name label
-    ctx.fillStyle = col;
     ctx.font = '9px Courier New';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    if (p.idx === myIdx) {
-      ctx.fillStyle = '#fff';
-    }
-    ctx.fillText(p.name.slice(0, 8), x, y - r - 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = p.idx === myIdx ? '#fff' : PAC_COLORS[p.idx % 4];
+    ctx.fillText(p.name.slice(0, 8), cx, cy - r - 1);
   }
 }
 
 function drawGhosts() {
   const r = CELL * 0.42;
   for (const g of ghosts) {
-    const { x, y } = { x: g.drawC * CELL + CELL/2, y: g.drawR * CELL + CELL/2 };
-    const col = g.frightened ? GHOST_FRIGHT : g.color;
-    drawGhostShape(x, y, r, col);
+    const cx = g.drawC * CELL + CELL / 2;
+    const cy = g.drawR * CELL + CELL / 2;
+    drawGhost(cx, cy, r, g.frightened ? GHOST_FRIGHT : g.color);
   }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 </script>
 </body>

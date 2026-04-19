@@ -127,8 +127,10 @@ function bcast(session, msg) {
 }
 
 function startGameLoop(session) {
+  let tick = 0;
   session.interval = setInterval(() => {
     if (session.state !== 'playing') { clearInterval(session.interval); return; }
+    tick++;
 
     const { map, ghosts, players } = session;
     const playerUpdates = [];
@@ -175,10 +177,12 @@ function startGameLoop(session) {
       });
     }
 
-    // ── Move ghosts ───────────────────────────────────────────────────────────
-    for (const g of ghosts) {
-      if (g.frightened && --g.frightenedTicks <= 0) g.frightened = false;
-      ghostAI(g, players, map);
+    // ── Move ghosts every 4 ticks (~1.7 moves/sec vs player's 6.7) ────────────
+    if (tick % 4 === 0) {
+      for (const g of ghosts) {
+        if (g.frightened && --g.frightenedTicks <= 0) g.frightened = false;
+        ghostAI(g, players, map);
+      }
     }
 
     // ── Check collisions ──────────────────────────────────────────────────────

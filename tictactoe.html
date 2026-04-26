@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/favicon.svg">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #e0d5c1;
+      font-family: 'Georgia', serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      letter-spacing: 6px;
+      color: #d4af37;
+      text-shadow: 0 0 20px rgba(212,175,55,0.4);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.75rem;
+      color: #555577;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    /* ── Lobby ── */
+    #lobby {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .card {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 24px 28px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .card h2 {
+      font-size: 0.9rem;
+      letter-spacing: 3px;
+      color: #d4af37;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    input[type=text] {
+      background: #0f0f22;
+      border: 1px solid #2a2a5a;
+      border-radius: 4px;
+      color: #e0d5c1;
+      padding: 9px 12px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+
+    input[type=text]:focus { border-color: #d4af37; }
+
+    button {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 4px;
+      color: #d4af37;
+      padding: 9px 22px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color .15s, background .15s;
+    }
+
+    button:hover { border-color: #d4af37; background: #1e2a4a; }
+    button:disabled { opacity: .4; cursor: default; }
+
+    .session-item {
+      background: #16213e;
+      border: 1px solid #2a2a5a;
+      border-radius: 6px;
+      padding: 11px 16px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+
+    .session-item:hover { border-color: #d4af37; }
+    .shost  { font-size: 0.88rem; }
+    .sstatus { font-size: 0.75rem; color: #6060a0; }
+    #no-sessions { font-size: 0.8rem; color: #444466; padding: 6px; }
+
+    #player-chips {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      border: 1px solid;
+      letter-spacing: 1px;
+    }
+
+    .chip-x { color: #60a8ff; border-color: #305880; }
+    .chip-o { color: #ff8060; border-color: #803020; }
+
+    /* ── Game ── */
+    #game { display: none; flex-direction: column; align-items: center; gap: 20px; }
+
+    #status-bar {
+      font-size: 0.9rem;
+      letter-spacing: 2px;
+      color: #d4af37;
+      min-height: 1.4em;
+      text-align: center;
+    }
+
+    #names-bar {
+      display: flex;
+      gap: 32px;
+      font-size: 0.82rem;
+      letter-spacing: 1px;
+    }
+
+    .name-x { color: #60a8ff; }
+    .name-o { color: #ff8060; }
+    .name-active { text-shadow: 0 0 10px currentColor; font-weight: bold; }
+
+    /* ── Board ── */
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-template-rows: repeat(3, 100px);
+      gap: 0;
+      position: relative;
+    }
+
+    .cell {
+      width: 100px;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.8rem;
+      cursor: pointer;
+      border: 1px solid #2a2a5a;
+      transition: background .12s;
+      user-select: none;
+      -webkit-user-select: none;
+      position: relative;
+    }
+
+    .cell:hover:not(.taken) { background: #1e2a4a; }
+    .cell.taken { cursor: default; }
+
+    /* Thicker inner grid lines */
+    .cell:nth-child(1), .cell:nth-child(2), .cell:nth-child(3) { border-top: none; }
+    .cell:nth-child(7), .cell:nth-child(8), .cell:nth-child(9) { border-bottom: none; }
+    .cell:nth-child(1), .cell:nth-child(4), .cell:nth-child(7) { border-left: none; }
+    .cell:nth-child(3), .cell:nth-child(6), .cell:nth-child(9) { border-right: none; }
+
+    .cell .mark {
+      display: block;
+      transition: transform .15s, opacity .15s;
+      transform: scale(0);
+      opacity: 0;
+    }
+
+    .cell.placed .mark {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .cell.winning {
+      background: rgba(212, 175, 55, 0.12);
+    }
+
+    .mark-x { color: #60a8ff; }
+    .mark-o { color: #ff8060; }
+
+    /* Win line SVG overlay */
+    #win-line {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    #win-line line {
+      stroke: #d4af37;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-dasharray: 400;
+      stroke-dashoffset: 400;
+      transition: stroke-dashoffset .4s ease;
+    }
+
+    #win-line line.drawn { stroke-dashoffset: 0; }
+
+    /* ── Result overlay ── */
+    #result {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    #result-title {
+      font-size: 1.4rem;
+      letter-spacing: 4px;
+      color: #d4af37;
+      text-transform: uppercase;
+    }
+
+    #result-sub {
+      font-size: 0.82rem;
+      color: #888899;
+      letter-spacing: 2px;
+    }
+
+    .btn-row { display: flex; gap: 10px; justify-content: center; }
+
+    #status-msg {
+      font-size: 0.75rem;
+      color: #555577;
+      letter-spacing: 1px;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Tic-Tac-Toe</h1>
+<div class="subtitle">2 Players · Online</div>
+
+<!-- ── Lobby ── -->
+<div id="lobby">
+  <div class="card">
+    <h2>Play</h2>
+    <input type="text" id="name-input" placeholder="Your name" maxlength="24">
+    <button id="create-btn">Create Game</button>
+    <div id="player-chips"></div>
+  </div>
+  <div id="session-list"></div>
+  <div id="status-msg"></div>
+</div>
+
+<!-- ── Game ── -->
+<div id="game">
+  <div id="names-bar">
+    <span id="name-x" class="name-x"></span>
+    <span id="name-o" class="name-o"></span>
+  </div>
+
+  <div id="board">
+    <div class="cell" data-cell="0"><span class="mark"></span></div>
+    <div class="cell" data-cell="1"><span class="mark"></span></div>
+    <div class="cell" data-cell="2"><span class="mark"></span></div>
+    <div class="cell" data-cell="3"><span class="mark"></span></div>
+    <div class="cell" data-cell="4"><span class="mark"></span></div>
+    <div class="cell" data-cell="5"><span class="mark"></span></div>
+    <div class="cell" data-cell="6"><span class="mark"></span></div>
+    <div class="cell" data-cell="7"><span class="mark"></span></div>
+    <div class="cell" data-cell="8"><span class="mark"></span></div>
+    <svg id="win-line" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+      <line id="win-svg-line" x1="0" y1="0" x2="0" y2="0"/>
+    </svg>
+  </div>
+
+  <div id="status-bar"></div>
+
+  <div id="result">
+    <div id="result-title"></div>
+    <div id="result-sub"></div>
+    <div class="btn-row">
+      <button id="rematch-btn">Rematch</button>
+      <button id="leave-btn">Leave</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const ws    = new WebSocket(`${proto}://${location.host}/ws/tictactoe`);
+
+let myIdx    = -1;
+let myName   = localStorage.getItem('ttt_name') || '';
+let gameState = 'lobby'; // lobby | waiting | playing | done
+let players  = [];
+let board    = Array(9).fill(null);
+let myTurn   = false;
+
+// DOM
+const lobbyEl    = document.getElementById('lobby');
+const gameEl     = document.getElementById('game');
+const nameInput  = document.getElementById('name-input');
+const createBtn  = document.getElementById('create-btn');
+const playerChips= document.getElementById('player-chips');
+const sessionList= document.getElementById('session-list');
+const statusMsg  = document.getElementById('status-msg');
+const boardEl    = document.getElementById('board');
+const cells      = [...document.querySelectorAll('.cell')];
+const statusBar  = document.getElementById('status-bar');
+const nameX      = document.getElementById('name-x');
+const nameO      = document.getElementById('name-o');
+const resultEl   = document.getElementById('result');
+const resultTitle= document.getElementById('result-title');
+const resultSub  = document.getElementById('result-sub');
+const rematchBtn = document.getElementById('rematch-btn');
+const leaveBtn   = document.getElementById('leave-btn');
+const winLine    = document.getElementById('win-svg-line');
+
+if (myName) nameInput.value = myName;
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+ws.addEventListener('message', e => {
+  let msg; try { msg = JSON.parse(e.data); } catch { return; }
+  handle(msg);
+});
+ws.addEventListener('open',  () => fetchSessions());
+ws.addEventListener('close', () => setStatus('Disconnected.'));
+
+function send(obj) { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+
+// ── Lobby ─────────────────────────────────────────────────────────────────────
+createBtn.addEventListener('click', () => {
+  const name = nameInput.value.trim() || 'Player';
+  localStorage.setItem('ttt_name', name);
+  myName = name;
+  send({ type: 'join', name });
+  createBtn.disabled = true;
+});
+
+function fetchSessions() {
+  fetch('/api/tictactoe/sessions').then(r => r.json()).then(renderSessions).catch(() => {});
+}
+setInterval(() => { if (gameState === 'lobby') fetchSessions(); }, 3000);
+
+function renderSessions(list) {
+  if (!list.length) {
+    sessionList.innerHTML = '<div id="no-sessions">No open games — create one above!</div>';
+    return;
+  }
+  sessionList.innerHTML = list.map(s =>
+    `<div class="session-item" data-id="${s.id}">
+       <span class="shost">${esc(s.hostName)}'s game</span>
+       <span class="sstatus">waiting for opponent</span>
+     </div>`
+  ).join('');
+  sessionList.querySelectorAll('.session-item').forEach(el =>
+    el.addEventListener('click', () => {
+      const name = nameInput.value.trim() || 'Player';
+      localStorage.setItem('ttt_name', name);
+      myName = name;
+      send({ type: 'join', name, sessionId: +el.dataset.id });
+      createBtn.disabled = true;
+    })
+  );
+}
+
+function renderChips(plist) {
+  playerChips.innerHTML = plist.map((p, i) =>
+    `<span class="chip ${i === 0 ? 'chip-x' : 'chip-o'}">${esc(p.name)} (${i === 0 ? 'X' : 'O'})</span>`
+  ).join('');
+}
+
+// ── Message Handler ───────────────────────────────────────────────────────────
+function handle(msg) {
+  if (msg.type === 'joined') {
+    myIdx = msg.yourIdx;
+    gameState = 'waiting';
+    players = msg.players;
+    renderChips(msg.players);
+    setStatus(myIdx === 0 ? 'Waiting for opponent…' : 'Joined! Starting soon…');
+    return;
+  }
+
+  if (msg.type === 'lobby_update') {
+    players = msg.players;
+    renderChips(msg.players);
+    return;
+  }
+
+  if (msg.type === 'error') { setStatus(msg.message); createBtn.disabled = false; return; }
+
+  if (msg.type === 'start') {
+    players  = msg.players;
+    board    = Array(9).fill(null);
+    gameState = 'playing';
+    myTurn   = msg.turn === myIdx;
+    showGame();
+    resetBoard();
+    resultEl.style.display = 'none';
+    updateNames(msg.turn);
+    updateStatusBar(msg.turn);
+    return;
+  }
+
+  if (msg.type === 'move') {
+    placeMark(msg.cell, msg.mark);
+    board[msg.cell] = msg.mark;
+    myTurn = msg.turn === myIdx;
+    updateNames(msg.turn);
+    updateStatusBar(msg.turn);
+    return;
+  }
+
+  if (msg.type === 'game_over') {
+    gameState = 'done';
+    if (msg.line) drawWinLine(msg.line);
+    showResult(msg.winner, msg.winnerName);
+    return;
+  }
+
+  if (msg.type === 'rematch_vote') {
+    resultSub.textContent = msg.votes < 2 ? 'Waiting for opponent…' : 'Starting!';
+    return;
+  }
+
+  if (msg.type === 'player_left') {
+    gameState = 'waiting';
+    resultEl.style.display = 'none';
+    setStatusBar(`${esc(msg.name)} left. Waiting for new opponent…`);
+    return;
+  }
+}
+
+// ── Board ─────────────────────────────────────────────────────────────────────
+cells.forEach(cell => {
+  cell.addEventListener('click', () => {
+    if (gameState !== 'playing' || !myTurn) return;
+    const idx = +cell.dataset.cell;
+    if (board[idx]) return;
+    send({ type: 'move', cell: idx });
+  });
+});
+
+function resetBoard() {
+  board = Array(9).fill(null);
+  cells.forEach(c => {
+    c.classList.remove('taken', 'placed', 'winning');
+    c.querySelector('.mark').textContent = '';
+    c.querySelector('.mark').className = 'mark';
+  });
+  winLine.setAttribute('x1', 0); winLine.setAttribute('y1', 0);
+  winLine.setAttribute('x2', 0); winLine.setAttribute('y2', 0);
+  winLine.classList.remove('drawn');
+}
+
+function placeMark(idx, mark) {
+  const cell = cells[idx];
+  const span = cell.querySelector('.mark');
+  span.textContent = mark;
+  span.className = `mark mark-${mark.toLowerCase()}`;
+  cell.classList.add('taken');
+  // Trigger animation on next frame
+  requestAnimationFrame(() => cell.classList.add('placed'));
+}
+
+// Win line: map cell indices to SVG coords (each cell = 100px, grid is 300×300)
+const CELL_CENTERS = [
+  [50, 50], [150, 50], [250, 50],
+  [50,150], [150,150], [250,150],
+  [50,250], [150,250], [250,250],
+];
+
+function drawWinLine(line) {
+  if (!line) return;
+  const [a, c] = [line[0], line[2]];
+  const [x1, y1] = CELL_CENTERS[a];
+  const [x2, y2] = CELL_CENTERS[c];
+  // Extend slightly beyond center
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  const pad = 28;
+  winLine.setAttribute('x1', x1 - (dx/len)*pad);
+  winLine.setAttribute('y1', y1 - (dy/len)*pad);
+  winLine.setAttribute('x2', x2 + (dx/len)*pad);
+  winLine.setAttribute('y2', y2 + (dy/len)*pad);
+  line.forEach(i => cells[i].classList.add('winning'));
+  requestAnimationFrame(() => winLine.classList.add('drawn'));
+}
+
+function showResult(winner, winnerName) {
+  resultEl.style.display = 'flex';
+  rematchBtn.disabled = false;
+  if (winner === 'draw') {
+    resultTitle.textContent = "It's a Draw!";
+    resultSub.textContent = '';
+  } else {
+    const iWon = (winner === 'X' && myIdx === 0) || (winner === 'O' && myIdx === 1);
+    resultTitle.textContent = iWon ? 'You Win!' : 'You Lose';
+    resultSub.textContent = `${esc(winnerName)} wins as ${winner}`;
+  }
+}
+
+rematchBtn.addEventListener('click', () => {
+  send({ type: 'rematch' });
+  rematchBtn.disabled = true;
+  resultSub.textContent = 'Waiting for opponent…';
+});
+
+leaveBtn.addEventListener('click', () => {
+  ws.close();
+  gameState = 'lobby';
+  showLobby();
+  setTimeout(() => { location.reload(); }, 100);
+});
+
+// ── Names / Status ────────────────────────────────────────────────────────────
+function updateNames(turn) {
+  const xName = players[0]?.name || 'X';
+  const oName = players[1]?.name || 'O';
+  nameX.textContent = `✕ ${xName}`;
+  nameO.textContent = `○ ${oName}`;
+  nameX.className = 'name-x' + (turn === 0 ? ' name-active' : '');
+  nameO.className = 'name-o' + (turn === 1 ? ' name-active' : '');
+}
+
+function updateStatusBar(turn) {
+  if (turn === myIdx) {
+    setStatusBar('Your turn');
+  } else {
+    const opp = players[1 - myIdx]?.name || 'Opponent';
+    setStatusBar(`${esc(opp)}'s turn`);
+  }
+}
+
+function setStatusBar(t) { statusBar.textContent = t; }
+function setStatus(t)    { statusMsg.textContent = t; }
+
+// ── Layout toggle ─────────────────────────────────────────────────────────────
+function showGame() {
+  lobbyEl.style.display = 'none';
+  gameEl.style.display  = 'flex';
+}
+
+function showLobby() {
+  gameEl.style.display   = 'none';
+  lobbyEl.style.display  = 'flex';
+  createBtn.disabled     = false;
+  playerChips.innerHTML  = '';
+  fetchSessions();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

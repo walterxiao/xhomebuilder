@@ -29,6 +29,7 @@ const go         = require('./games/go');
 const sudoku     = require('./games/sudoku');
 const maze       = require('./games/maze');
 const pacman     = require('./games/pacman');
+const tictactoe  = require('./games/tictactoe');
 const stats      = require('./stats');
 
 // ── Play-count tracking ───────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ const GAME_START_MSGS = [
   [sudoku,     'sudoku',     ['start']],
   [maze,       'maze',       ['start']],
   [pacman,     'pacman',     ['start']],
+  [tictactoe,  'tictactoe',  ['move']],
 ];
 for (const [mod, game, types] of GAME_START_MSGS) {
   mod.wss.on('connection', ws => {
@@ -77,6 +79,7 @@ const GAME_JOIN_TRACK = [
   [sudoku,     'sudoku'],
   [maze,       'maze'],
   [pacman,     'pacman'],
+  [tictactoe,  'tictactoe'],
 ];
 for (const [mod, game] of GAME_JOIN_TRACK) {
   mod.wss.on('connection', ws => {
@@ -110,6 +113,7 @@ const PAGES = {
   '/sudoku':     'sudoku.html',
   '/maze':       'maze.html',
   '/pacman':     'pacman.html',
+  '/tictactoe':  'tictactoe.html',
 };
 
 
@@ -132,6 +136,7 @@ function requestHandler(req, res) {
     '/api/sudoku/sessions':     () => sudoku.getSessionList(),
     '/api/maze/sessions':       () => maze.getSessionList(),
     '/api/pacman/sessions':     () => pacman.getSessionList(),
+    '/api/tictactoe/sessions':  () => tictactoe.getSessionList(),
   };
   if (urlPath === '/api/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -238,6 +243,10 @@ httpsServer.on('upgrade', (req, socket, head) => {
   } else if (req.url === '/ws/pacman') {
     pacman.wss.handleUpgrade(req, socket, head, ws => {
       pacman.wss.emit('connection', ws, req);
+    });
+  } else if (req.url === '/ws/tictactoe') {
+    tictactoe.wss.handleUpgrade(req, socket, head, ws => {
+      tictactoe.wss.emit('connection', ws, req);
     });
   } else {
     socket.destroy();
